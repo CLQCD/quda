@@ -257,13 +257,14 @@ namespace quda
   Complex EigenSolver::blockOrthogonalize(std::vector<ColorSpinorField *> vecs, std::vector<ColorSpinorField *> rvec,
                                           int j)
   {
+    double clockt = -clock();
     if (prefetch_batch > 0) {
-      double clockt = -clock();
-      cudaStream_t stream[prefetch_batch];
-      for (int i = 0; i < prefetch_batch; i++) checkCuda(cudaStreamCreate(&stream[i]));
+      //double clockt = -clock();
+      cudaStream_t stream[prefetch_batch+1];
+      for (int i = 0; i < prefetch_batch+1; i++) checkCuda(cudaStreamCreate(&stream[i]));
       int offset = 0;
       Complex sum(0.0, 0.0);
-
+      
       bool ascending = (j % 2 == 0 ? false : true);
       int start = 0;
       int end = 0;
@@ -307,7 +308,7 @@ namespace quda
               start = (j - (b + 1) * prefetch_batch);
               end = (j - (b + 2) * prefetch_batch);
             }
-            offset = 0;
+            offset = 1;
             for (int i = start; i > end; i--) {
               vecs[i]->prefetch(QUDA_CUDA_FIELD_LOCATION, stream[offset]);
               offset++;
@@ -322,7 +323,7 @@ namespace quda
               start = (j - (b + 1) * prefetch_batch);
               end = 0;
             }
-            offset = 0;
+            offset = 1;
             for (int i = start; i > end; i--) {
               vecs[i]->prefetch(QUDA_CUDA_FIELD_LOCATION, stream[offset]);
               offset++;
@@ -347,14 +348,15 @@ namespace quda
         }
         blas::caxpy(s_remainder, vecs_ptr, rvec);
         // Do the lanczosStep routine a favour and prefetch the the next vector
-        if (j < nKr) vecs[j + 1]->prefetch(QUDA_CUDA_FIELD_LOCATION, stream[0]);
+        if (j < nKr) vecs[j + 1]->prefetch(QUDA_CUDA_FIELD_LOCATION, stream[1]);
       }
-
+      
       host_free(s_batch);
       host_free(s_remainder);
 
       clockt += clock();
       printfQuda("Block Ortho Time %d vectors = %e\n", (j + 1), clockt / CLOCKS_PER_SEC);
+      
       // Save orthonormalisation tuning
       saveTuneCache();
 
@@ -377,6 +379,9 @@ namespace quda
 
       host_free(s);
 
+      clockt += clock();
+      printfQuda("Block Ortho Time %d vectors = %e\n", (j + 1), clockt / CLOCKS_PER_SEC);
+      
       // Save orthonormalisation tuning
       saveTuneCache();
 
