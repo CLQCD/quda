@@ -58,9 +58,6 @@ static bool invalidate_quda_mom = true;
 
 static void *df_preconditioner = nullptr;
 
-// set to 1 for GPU resident pipeline (not yet supported in mainline MILC)
-#define MOM_PIPE 0
-
 using namespace quda;
 using namespace quda::fermion_force;
 
@@ -156,17 +153,16 @@ void qudaSetLayout(QudaLayout_t input)
   initQuda(device);
 }
 
-void* qudaAllocatePinned(size_t bytes) {
-  return pool_pinned_malloc(bytes);
-}
+void *qudaAllocatePinned(size_t bytes) { return pool_pinned_malloc(bytes); }
 
-void qudaFreePinned(void *ptr) {
-  pool_pinned_free(ptr);
-}
+void qudaFreePinned(void *ptr) { pool_pinned_free(ptr); }
+
+void *qudaAllocateManaged(size_t bytes) { return managed_malloc(bytes); }
+
+void qudaFreeManaged(void *ptr) { managed_free(ptr); }
 
 void qudaHisqParamsInit(QudaHisqParams_t params)
 {
-
   static bool initialized = false;
 
   if(initialized) return;
@@ -268,7 +264,6 @@ void qudaLoadUnitarizedLink(int prec, QudaFatLinkArgs_t fatlink_args,
 					   QUDA_GENERAL_LINKS);
 
   computeKSLinkQuda(fatlink, nullptr, ulink, inlink, const_cast<double*>(act_path_coeff), &param);
-  qudamilc_called<false>(__func__);
 
   // requires loadGaugeQuda to be called in subequent solver
   invalidateGaugeQuda();
@@ -384,34 +379,72 @@ void qudaUnitarizeSU3(int prec, double tol, QudaMILCSiteArg_t *arg)
   return;
 }
 
-double qudaMomAction(int prec, void *momentum)
+// download the momentum from MILC and place into the resident mom field
+void qudaMomLoad(int prec, QudaMILCSiteArg_t *arg)
 {
   qudamilc_called<true>(__func__);
 
-  QudaGaugeParam momParam = newMILCGaugeParam(localDim,
-      (prec==1) ? QUDA_SINGLE_PRECISION : QUDA_DOUBLE_PRECISION,
-      QUDA_GENERAL_LINKS);
+  QudaGaugeParam param
+    = newMILCGaugeParam(localDim, (prec == 1) ? QUDA_SINGLE_PRECISION : QUDA_DOUBLE_PRECISION, QUDA_GENERAL_LINKS);
 
-  if (MOM_PIPE) {
-    if (invalidate_quda_mom) {
-      // beginning of trajectory so download the momentum and make
-      // resident
-      momParam.use_resident_mom = false;
-      momParam.make_resident_mom = true;
-      invalidate_quda_mom = false;
-    } else {
-      // end of trajectory so use resident and then invalidate
-      momParam.use_resident_mom = true;
-      momParam.make_resident_mom = false;
-      invalidate_quda_mom = true;
-    }
+  void *mom = arg->site ? arg->site : arg->mom;
+  param.mom_offset = arg->mom_offset;
+  param.site_size = arg->size;
+  param.gauge_order = arg->site ? QUDA_MILC_SITE_GAUGE_ORDER : QUDA_MILC_GAUGE_ORDER;
+  param.make_resident_mom = 1;
+  param.return_result_mom = 0;
+
+  momResidentQuda(mom, &param);
+  invalidate_quda_mom = false;
+
+  qudamilc_called<false>(__func__);
+}
+
+// upload the momentum to MILC and invalidate the current resident momentum
+void qudaMomSave(int prec, QudaMILCSiteArg_t *arg)
+{
+  qudamilc_called<true>(__func__);
+
+  QudaGaugeParam param
+    = newMILCGaugeParam(localDim, (prec == 1) ? QUDA_SINGLE_PRECISION : QUDA_DOUBLE_PRECISION, QUDA_GENERAL_LINKS);
+
+  void *mom = arg->site ? arg->site : arg->mom;
+  param.mom_offset = arg->mom_offset;
+  param.site_size = arg->size;
+  param.gauge_order = arg->site ? QUDA_MILC_SITE_GAUGE_ORDER : QUDA_MILC_GAUGE_ORDER;
+  param.make_resident_mom = 0;
+  param.return_result_mom = 1;
+
+  momResidentQuda(mom, &param);
+  invalidate_quda_mom = true;
+
+  qudamilc_called<false>(__func__);
+}
+
+double qudaMomAction(int prec, QudaMILCSiteArg_t *arg)
+{
+  qudamilc_called<true>(__func__);
+
+  QudaGaugeParam param
+    = newMILCGaugeParam(localDim, (prec == 1) ? QUDA_SINGLE_PRECISION : QUDA_DOUBLE_PRECISION, QUDA_GENERAL_LINKS);
+
+  void *mom = arg->site ? arg->site : arg->mom;
+  param.mom_offset = arg->mom_offset;
+  param.site_size = arg->size;
+  param.gauge_order = arg->site ? QUDA_MILC_SITE_GAUGE_ORDER : QUDA_MILC_GAUGE_ORDER;
+  param.make_resident_mom = 0;
+
+  if (!invalidate_quda_mom) {
+    param.use_resident_mom = true;
+    param.make_resident_mom = true;
+    invalidate_quda_mom = false;
   } else { // no momentum residency
-    momParam.use_resident_mom = false;
-    momParam.make_resident_mom = false;
+    param.use_resident_mom = false;
+    param.make_resident_mom = false;
     invalidate_quda_mom = true;
   }
 
-  double action = momActionQuda(momentum, &momParam);
+  double action = momActionQuda(mom, &param);
 
   qudamilc_called<false>(__func__);
 
@@ -760,13 +793,11 @@ static void setColorSpinorParams(const int dim[4], QudaPrecision precision, Colo
 void setDeflationParam(QudaPrecision ritz_prec, QudaFieldLocation location_ritz, QudaMemoryType mem_type_ritz,
                        QudaExtLibType deflation_ext_lib, char vec_infile[], char vec_outfile[], QudaEigParam *df_param)
 {
-
   df_param->import_vectors = strcmp(vec_infile,"") ? QUDA_BOOLEAN_TRUE : QUDA_BOOLEAN_FALSE;
 
   df_param->cuda_prec_ritz = ritz_prec;
   df_param->location       = location_ritz;
   df_param->mem_type_ritz  = mem_type_ritz;
-
 
   df_param->run_verify     = QUDA_BOOLEAN_FALSE;
 
@@ -776,6 +807,7 @@ void setDeflationParam(QudaPrecision ritz_prec, QudaFieldLocation location_ritz,
   // set file i/o parameters
   strcpy(df_param->vec_infile, vec_infile);
   strcpy(df_param->vec_outfile, vec_outfile);
+  df_param->io_parity_inflate = QUDA_BOOLEAN_TRUE;
 }
 
 static size_t getColorVectorOffset(QudaParity local_parity, bool even_odd_exchange, const int dim[4])

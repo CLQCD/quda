@@ -110,6 +110,19 @@ extern "C" {
     double_complex b_5[QUDA_MAX_DWF_LS]; /**< Mobius coefficients - only real part used if regular Mobius */
     double_complex c_5[QUDA_MAX_DWF_LS]; /**< Mobius coefficients - only real part used if regular Mobius */
 
+    /**<
+     * The following specifies the EOFA parameters. Notation follows arXiv:1706.05843
+     * eofa_shift: the "\beta" in the paper
+     * eofa_pm: plus or minus for the EOFA operator
+     * mq1, mq2, mq3 are the three masses corresponds to Hasenbusch mass spliting.
+     * As far as I know mq1 is always the same as "mass" but it's here just for consistence.
+     * */
+    double eofa_shift;
+    int eofa_pm;
+    double mq1;
+    double mq2;
+    double mq3;
+
     double mu;    /**< Twisted mass parameter */
     double epsilon; /**< Twisted mass parameter */
 
@@ -444,6 +457,8 @@ extern "C" {
     int batched_rotate;
     /** For the block orthonormalisation, the maximal number of vectors the solver may prefetch **/
     int prefetch_batch;
+    /** For block method solvers, the block size **/
+    int block_size;
 
     /** In the test function, cross check the device result against ARPACK **/
     QudaBoolean arpack_check;
@@ -480,6 +495,11 @@ extern "C" {
 
     /** Filename prefix for where to save the null-space vectors */
     char vec_outfile[256];
+
+    /** Whether to inflate single-parity eigen-vector I/O to a full
+        field (e.g., enabling this is required for compatability with
+        MILC I/O) */
+    QudaBoolean io_parity_inflate;
 
     /** The Gflops rate of the eigensolver setup */
     double gflops;
@@ -1012,8 +1032,7 @@ extern "C" {
    *               storage
    * @param parity The destination parity of the field
    */
-  void dslashQuda(void *h_out, void *h_in, QudaInvertParam *inv_param,
-      QudaParity parity);
+  void dslashQuda(void *h_out, void *h_in, QudaInvertParam *inv_param, QudaParity parity);
 
   /**
    * Apply the clover operator or its inverse.
@@ -1058,7 +1077,14 @@ extern "C" {
   void computeKSLinkQuda(void* fatlink, void* longlink, void* ulink, void* inlink,
                          double *path_coeff, QudaGaugeParam *param);
 
-
+  /**
+   * Either downloads and sets the resident momentum field, or uploads
+   * and returns the resident momentum field
+   *
+   * @param[in,out] mom The external momentum field
+   * @param[in] param The parameters of the external field
+   */
+  void momResidentQuda(void *mom, QudaGaugeParam *param);
 
   /**
    * Compute the gauge force and update the mometum field

@@ -125,6 +125,9 @@ void printQudaGaugeParam(QudaGaugeParam *param) {
   P(make_resident_mom, INVALID_INT);
   P(return_result_gauge, INVALID_INT);
   P(return_result_mom, INVALID_INT);
+  P(gauge_offset, (size_t)INVALID_INT);
+  P(mom_offset, (size_t)INVALID_INT);
+  P(site_size, (size_t)INVALID_INT);
 #endif
 
 #ifdef INIT_PARAM
@@ -193,17 +196,27 @@ void printQudaEigParam(QudaEigParam *param) {
   P(arpack_check, QUDA_BOOLEAN_INVALID);
   P(nk, INVALID_INT);
   P(np, INVALID_INT);
-  P(check_interval, INVALID_INT);
-  P(max_restarts, INVALID_INT);
   P(eig_type, QUDA_EIG_INVALID);
   P(extlib_type, QUDA_EXTLIB_INVALID);
   P(mem_type_ritz, QUDA_MEMORY_INVALID);
 #endif
 
+  // only need to enfore block size checking if doing a block eigen solve
+#ifdef CHECK__PARAM
+  if (param->eig_type == QUDA_EIG_BLK_TR_LANCZOS)
+#endif
+    P(block_size, INVALID_INT);
+
 #if defined INIT_PARAM
   P(location, QUDA_CUDA_FIELD_LOCATION);
 #else
   P(location, QUDA_INVALID_FIELD_LOCATION);
+#endif
+
+#if defined INIT_PARAM
+  P(io_parity_inflate, QUDA_BOOLEAN_FALSE);
+#else
+  P(io_parity_inflate, QUDA_BOOLEAN_INVALID);
 #endif
 
 #ifdef INIT_PARAM
@@ -474,7 +487,7 @@ void printQudaInvertParam(QudaInvertParam *param) {
   P(tol_precondition, INVALID_DOUBLE);
   P(maxiter_precondition, INVALID_INT);
   P(verbosity_precondition, QUDA_INVALID_VERBOSITY);
-  P(schwarz_type, QUDA_ADDITIVE_SCHWARZ); // defaults match previous interface behaviour
+  P(schwarz_type, QUDA_INVALID_SCHWARZ);
   P(precondition_cycle, 1);               // defaults match previous interface behaviour
 #else
   if (param->inv_type_precondition == QUDA_BICGSTAB_INVERTER || param->inv_type_precondition == QUDA_CG_INVERTER
@@ -482,7 +495,6 @@ void printQudaInvertParam(QudaInvertParam *param) {
     P(tol_precondition, INVALID_DOUBLE);
     P(maxiter_precondition, INVALID_INT);
     P(verbosity_precondition, QUDA_INVALID_VERBOSITY);
-    P(schwarz_type, QUDA_INVALID_SCHWARZ);
     P(precondition_cycle, 0);
   }
 #endif
@@ -809,11 +821,11 @@ void printQudaMultigridParam(QudaMultigridParam *param) {
 
   for (int i = 0; i < n_level - 1; i++) {
 #ifdef INIT_PARAM
-    P(vec_load[i], QUDA_BOOLEAN_INVALID);
-    P(vec_store[i], QUDA_BOOLEAN_INVALID);
-#else
     P(vec_load[i], QUDA_BOOLEAN_FALSE);
     P(vec_store[i], QUDA_BOOLEAN_FALSE);
+#else
+    P(vec_load[i], QUDA_BOOLEAN_INVALID);
+    P(vec_store[i], QUDA_BOOLEAN_INVALID);
 #endif
   }
 
