@@ -270,6 +270,7 @@ namespace quda {
 	break;
       case QUDA_WILSON_DIRAC:
       case QUDA_CLOVER_DIRAC:
+      case QUDA_CLOVER_EXP_DIRAC:
       case QUDA_CLOVER_HASENBUSCH_TWIST_DIRAC:
       case QUDA_DOMAIN_WALL_DIRAC:
       case QUDA_MOBIUS_DOMAIN_WALL_DIRAC:
@@ -281,6 +282,7 @@ namespace quda {
         break;
       case QUDA_WILSONPC_DIRAC:
       case QUDA_CLOVERPC_DIRAC:
+      case QUDA_CLOVER_EXPPC_DIRAC:
       case QUDA_CLOVER_HASENBUSCH_TWISTPC_DIRAC:
       case QUDA_DOMAIN_WALLPC_DIRAC:
       case QUDA_DOMAIN_WALL_4DPC_DIRAC:
