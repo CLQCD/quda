@@ -366,6 +366,7 @@ void printQudaInvertParam(QudaInvertParam *param) {
   P(mu, INVALID_DOUBLE);
   P(epsilon, INVALID_DOUBLE);
   P(tm_rho, 0.0);
+  P(improve, 0.0);
   P(twist_flavor, QUDA_TWIST_INVALID);
   P(laplace3D, INVALID_INT);
 #else
@@ -388,6 +389,9 @@ void printQudaInvertParam(QudaInvertParam *param) {
     P(twist_flavor, QUDA_TWIST_INVALID);
   }
   if (param->dslash_type == QUDA_TWISTED_CLOVER_DSLASH) { P(tm_rho, INVALID_DOUBLE); }
+  if (param->dslash_type == QUDA_WILSON_DSLASH || param->dslash_type == QUDA_CLOVER_WILSON_DSLASH) {
+    P(improve, INVALID_DOUBLE);
+  }
   if (param->twist_flavor == QUDA_TWIST_NONDEG_DOUBLET) { P(epsilon, INVALID_DOUBLE); }
 #endif
 

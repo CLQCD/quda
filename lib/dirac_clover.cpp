@@ -37,7 +37,11 @@ namespace quda {
     checkParitySpinor(in, out);
     checkSpinorAlias(in, out);
 
-    ApplyWilsonClover(out, in, *gauge, *clover, k, x, parity, dagger, commDim, profile);
+    if (improve == 0.0) {
+      ApplyWilsonClover(out, in, *gauge, *clover, k, x, parity, dagger, commDim, profile);
+    } else {
+      ApplyImprovedWilsonClover(out, in, *gauge, *long_gauge, *clover, k, x, improve, parity, dagger, commDim, profile);
+    }
     flops += 1872ll*in.Volume();
   }
 
@@ -52,7 +56,11 @@ namespace quda {
 
   void DiracClover::M(ColorSpinorField &out, const ColorSpinorField &in) const
   {
-    ApplyWilsonClover(out, in, *gauge, *clover, -kappa, in, QUDA_INVALID_PARITY, dagger, commDim, profile);
+    if (improve == 0.0) {
+      ApplyWilsonClover(out, in, *gauge, *clover, -kappa, in, QUDA_INVALID_PARITY, dagger, commDim, profile);
+    } else {
+      ApplyImprovedWilsonClover(out, in, *gauge, *long_gauge, *clover, -kappa, in, improve, QUDA_INVALID_PARITY, dagger, commDim, profile);
+    }
     flops += 1872ll * in.Volume();
   }
 
@@ -139,7 +147,11 @@ namespace quda {
     checkParitySpinor(in, out);
     checkSpinorAlias(in, out);
 
-    ApplyWilsonCloverPreconditioned(out, in, *gauge, *clover, 0.0, in, parity, dagger, commDim, profile);
+    if (improve == 0.0) {
+      ApplyWilsonCloverPreconditioned(out, in, *gauge, *clover, 0.0, in, parity, dagger, commDim, profile);
+    } else {
+      ApplyImprovedWilsonCloverPreconditioned(out, in, *gauge, *long_gauge, *clover, 0.0, in, improve, parity, dagger, commDim, profile);
+    }
     flops += 1824ll*in.Volume();
   }
 
@@ -151,7 +163,11 @@ namespace quda {
     checkParitySpinor(in, out);
     checkSpinorAlias(in, out);
 
-    ApplyWilsonCloverPreconditioned(out, in, *gauge, *clover, k, x, parity, dagger, commDim, profile);
+    if (improve == 0.0) {
+      ApplyWilsonCloverPreconditioned(out, in, *gauge, *clover, k, x, parity, dagger, commDim, profile);
+    } else {
+      ApplyImprovedWilsonCloverPreconditioned(out, in, *gauge, *long_gauge, *clover, k, x, improve, parity, dagger, commDim, profile);
+    }
     flops += 1872ll*in.Volume();
   }
 

@@ -1572,6 +1572,7 @@ namespace quda {
     diracParam.m5 = inv_param->m5;
     diracParam.mu = inv_param->mu;
     diracParam.tm_rho = inv_param->tm_rho;
+    diracParam.improve = inv_param->improve;
 
     for (int i=0; i<4; i++) diracParam.commDim[i] = 1;   // comms are always on
 

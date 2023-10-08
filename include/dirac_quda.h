@@ -64,6 +64,7 @@ namespace quda {
     double epsilon; //2nd tm parameter (used by twisted mass only)
     double tm_rho;  // "rho"-type Hasenbusch mass used for twisted clover (like regular rho but
                     // applied like a twisted mass and ignored in the inverse)
+    double improve; // used by improved Wilson/clover only
 
     int commDim[QUDA_MAX_DIM]; // whether to do comms or not
 
@@ -92,6 +93,7 @@ namespace quda {
       mu_factor(0.0),
       epsilon(0.0),
       tm_rho(0.0),
+      improve(0.0),
       halo_precision(QUDA_INVALID_PRECISION),
       need_bidirectional(false),
 #ifdef QUDA_MMA_AVAILABLE
@@ -124,6 +126,7 @@ namespace quda {
       printfQuda("mu = %g\n", mu);
       printfQuda("tm_rho = %g\n", tm_rho);
       printfQuda("epsilon = %g\n", epsilon);
+      printfQuda("improve = %g\n", improve);
       printfQuda("halo_precision = %d\n", halo_precision);
       for (int i=0; i<QUDA_MAX_DIM; i++) printfQuda("commDim[%d] = %d\n", i, commDim[i]);
       for (int i = 0; i < Ls; i++)
@@ -515,6 +518,9 @@ namespace quda {
   class DiracWilson : public Dirac {
 
   protected:
+    double improve;
+    cudaGaugeField *long_gauge;
+
     void initConstants();
 
   public:

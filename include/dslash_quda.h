@@ -177,6 +177,17 @@ namespace quda
       const CloverField &A, double kappa, const ColorSpinorField &x, int parity, bool dagger, const int *comm_override,
       TimeProfile &profile);
 
+  void ApplyImprovedWilson(ColorSpinorField &out, const ColorSpinorField &in, const GaugeField &U, const GaugeField &L,
+      double kappa, const ColorSpinorField &x, double improve, int parity, bool dagger, const int *comm_override, TimeProfile &profile);
+
+  void ApplyImprovedWilsonClover(ColorSpinorField &out, const ColorSpinorField &in, const GaugeField &U,
+      const GaugeField &L, const CloverField &A, double kappa, const ColorSpinorField &x, double improve, int parity, bool dagger,
+      const int *comm_override, TimeProfile &profile);
+
+  void ApplyImprovedWilsonCloverPreconditioned(ColorSpinorField &out, const ColorSpinorField &in, const GaugeField &U,
+      const GaugeField &L, const CloverField &A, double kappa, const ColorSpinorField &x, double improve, int parity, bool dagger,
+      const int *comm_override, TimeProfile &profile);
+
   /**
      @brief Driver for applying the twisted-mass stencil
 

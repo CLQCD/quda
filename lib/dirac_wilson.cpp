@@ -5,7 +5,7 @@
 
 namespace quda {
 
-  DiracWilson::DiracWilson(const DiracParam &param) : Dirac(param) { }
+  DiracWilson::DiracWilson(const DiracParam &param) : Dirac(param), long_gauge(param.longGauge), improve(param.improve) { }
 
   DiracWilson::DiracWilson(const DiracWilson &dirac) : Dirac(dirac) { }
 
@@ -27,7 +27,11 @@ namespace quda {
     checkParitySpinor(in, out);
     checkSpinorAlias(in, out);
 
-    ApplyWilson(out, in, *gauge, 0.0, in, parity, dagger, commDim, profile);
+    if (improve == 0.0) {
+      ApplyWilson(out, in, *gauge, 0.0, in, parity, dagger, commDim, profile);
+    } else {
+      ApplyImprovedWilson(out, in, *gauge, *long_gauge, 0.0, in, improve, parity, dagger, commDim, profile);
+    }
     flops += 1320ll*in.Volume();
   }
 
@@ -37,7 +41,11 @@ namespace quda {
     checkParitySpinor(in, out);
     checkSpinorAlias(in, out);
 
-    ApplyWilson(out, in, *gauge, k, x, parity, dagger, commDim, profile);
+    if (improve == 0.0) {
+      ApplyWilson(out, in, *gauge, k, x, parity, dagger, commDim, profile);
+    } else {
+      ApplyImprovedWilson(out, in, *gauge, *long_gauge, k, x, improve, parity, dagger, commDim, profile);
+    }
     flops += 1368ll*in.Volume();
   }
 
@@ -45,7 +53,11 @@ namespace quda {
   {
     checkFullSpinor(out, in);
 
-    ApplyWilson(out, in, *gauge, -kappa, in, QUDA_INVALID_PARITY, dagger, commDim, profile);
+    if (improve == 0.0) {
+      ApplyWilson(out, in, *gauge, -kappa, in, QUDA_INVALID_PARITY, dagger, commDim, profile);
+    } else {
+      ApplyImprovedWilson(out, in, *gauge, *long_gauge, -kappa, in, improve, QUDA_INVALID_PARITY, dagger, commDim, profile);
+    }
     flops += 1368ll * in.Volume();
   }
 
