@@ -81,8 +81,8 @@ namespace quda
     // parity for gauge field - include residual parity from 5-d => 4-d checkerboarding
     const int gauge_parity = (Arg::nDim == 5 ? (coord.x_cb / arg.dc.volume_4d_cb + parity) % 2 : parity);
 
-    const double single = 1.0 + 0.75 * arg.improve;
-    const double triple = -0.25 * arg.improve;
+    const real single = 1.0 + 0.75 * arg.improve;
+    const real triple = -0.25 * arg.improve;
 
 #pragma unroll
     for (int d = 0; d < 4; d++) { // loop over dimension - 4 and not nDim since this is used for DWF as well
@@ -108,7 +108,7 @@ namespace quda
           Link U = arg.U(d, gauge_idx, gauge_parity);
           Vector in = arg.in(fwd_idx + coord.s * arg.dc.volume_4d_cb, their_spinor_parity);
 
-          out += (U * in.project(d, proj_dir) * single).reconstruct(d, proj_dir);
+          out += (single * U * in.project(d, proj_dir)).reconstruct(d, proj_dir);
         }
       }
 
@@ -134,7 +134,7 @@ namespace quda
           Link U = arg.U(d, gauge_idx, 1 - gauge_parity);
           Vector in = arg.in(back_idx + coord.s * arg.dc.volume_4d_cb, their_spinor_parity);
 
-          out += (conj(U) * in.project(d, proj_dir) * single).reconstruct(d, proj_dir);
+          out += (single * conj(U) * in.project(d, proj_dir)).reconstruct(d, proj_dir);
         }
       }
 
@@ -150,7 +150,7 @@ namespace quda
           Link L = arg.L(d, coord.x_cb, gauge_parity);
           Vector in = arg.in(fwd3_idx, their_spinor_parity);
 
-          out += (L * in.project(d, proj_dir) * triple).reconstruct(d, proj_dir);
+          out += (triple * L * in.project(d, proj_dir)).reconstruct(d, proj_dir);
         }
       }
 
@@ -164,16 +164,16 @@ namespace quda
         if (doBulk<kernel_type>() && !ghost) {
 
           Link L = arg.L(d, gauge_idx, 1 - gauge_parity);
-          Vector in = arg.in(back_idx, their_spinor_parity);
+          Vector in = arg.in(back3_idx, their_spinor_parity);
 
-          out += (conj(L) * in.project(d, proj_dir) * single).reconstruct(d, proj_dir);
+          out += (triple * conj(L) * in.project(d, proj_dir)).reconstruct(d, proj_dir);
         }
       }
 
     } // nDim
   }
 
-  template <int nParity, bool dagger, bool xpay, KernelType kernel_type, typename Arg> struct wilson : dslash_default {
+  template <int nParity, bool dagger, bool xpay, KernelType kernel_type, typename Arg> struct improvedWilson : dslash_default {
 
     const Arg &arg;
     constexpr improvedWilson(const Arg &arg) : arg(arg) {}

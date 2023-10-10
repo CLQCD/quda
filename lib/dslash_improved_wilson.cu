@@ -57,7 +57,7 @@ namespace quda
                            double a, const ColorSpinorField &x, double improve, int parity, bool dagger, const int *comm_override,
                            TimeProfile &profile)
   {
-    instantiate<ImprovedWilsonApply, WilsonReconstruct>(out, in, U, L, a, x, parity, dagger, comm_override, profile);
+    instantiate<ImprovedWilsonApply, WilsonReconstruct>(out, in, U, L, a, x, improve, parity, dagger, comm_override, profile);
   }
 #else
   void ApplyImprovedWilson(ColorSpinorField &, const ColorSpinorField &, const GaugeField &, const GaugeField &,

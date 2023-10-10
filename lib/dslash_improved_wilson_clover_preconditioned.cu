@@ -110,7 +110,7 @@ namespace quda
   template <typename Float, int nColor, QudaReconstructType recon> struct ImprovedWilsonCloverPreconditionedApply {
 
     inline ImprovedWilsonCloverPreconditionedApply(ColorSpinorField &out, const ColorSpinorField &in, const GaugeField &U,
-                                                   cosnt GaugeField &L, const CloverField &A, double a,
+                                                   const GaugeField &L, const CloverField &A, double a,
                                                    const ColorSpinorField &x, int parity, double improve, bool dagger, const int *comm_override,
                                                    TimeProfile &profile)
     {
@@ -127,11 +127,11 @@ namespace quda
   // Uses the kappa normalization for the Wilson operator.
 #ifdef GPU_CLOVER_DIRAC
   void ApplyImprovedWilsonCloverPreconditioned(ColorSpinorField &out, const ColorSpinorField &in, const GaugeField &U,
-                                               const GaugeField &U, const CloverField &A, double a,
+                                               const GaugeField &L, const CloverField &A, double a,
                                                const ColorSpinorField &x, double improve, int parity, bool dagger, const int *comm_override,
                                                TimeProfile &profile)
   {
-    instantiate<ImprovedWilsonCloverPreconditionedApply>(out, in, U, A, a, x, improve, parity, dagger, comm_override, profile);
+    instantiate<ImprovedWilsonCloverPreconditionedApply>(out, in, U, L, A, a, x, improve, parity, dagger, comm_override, profile);
   }
 #else
   void ApplyImprovedWilsonCloverPreconditioned(ColorSpinorField &, const ColorSpinorField &, const GaugeField &,
