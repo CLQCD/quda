@@ -119,6 +119,18 @@ namespace quda
   void OvrImpSTOUTStep(GaugeField &dataDs, GaugeField &dataOr, double rho, double epsilon);
 
   /**
+     @brief Apply HYP smearing to the gauge field
+
+     @param[out] dataDs Output smeared field
+     @param[in] dataOr Input gauge field
+     @param[in] dataTemp Temp space
+     @param[in] alpha1 smearing parameter
+     @param[in] alpha2 smearing parameter
+     @param[in] alpha3 smearing parameter
+  */
+  void HYPStep(GaugeField &dataDs, GaugeField &dataOr, GaugeField *dataTemp[4], double alpha1, double alpha2, double alpha3);
+
+  /**
      @brief Apply Wilson Flow steps W1, W2, Vt to the gauge field.
      This routine assumes that the input and output fields are
      extended, with the input field being exchanged prior to calling

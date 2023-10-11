@@ -5694,6 +5694,13 @@ void performGaugeSmearQuda(QudaGaugeSmearParam *smear_param, QudaGaugeObservable
   GaugeFieldParam gParam(*gaugeSmeared);
   gParam.location = QUDA_CUDA_FIELD_LOCATION;
   auto *cudaGaugeTemp = new cudaGaugeField(gParam);
+  GaugeField *cudaGaugeHYPTemp[4];
+  if (smear_param->smear_type == QUDA_GAUGE_SMEAR_HYP) {
+    gParam.geometry = QUDA_TENSOR_GEOMETRY;
+    for (int i = 0; i < 4; ++i) {
+      cudaGaugeHYPTemp[i] = new cudaGaugeField(gParam);
+    }
+  }
 
   int measurement_n = 0; // The nth measurement to take
   gaugeObservablesQuda(&obs_param[measurement_n]);
@@ -5710,6 +5717,7 @@ void performGaugeSmearQuda(QudaGaugeSmearParam *smear_param, QudaGaugeObservable
     case QUDA_GAUGE_SMEAR_OVRIMP_STOUT:
       OvrImpSTOUTStep(*gaugeSmeared, *cudaGaugeTemp, smear_param->rho, smear_param->epsilon);
       break;
+    case QUDA_GAUGE_SMEAR_HYP: HYPStep(*gaugeSmeared, *cudaGaugeTemp, cudaGaugeHYPTemp, smear_param->alpha1, smear_param->alpha2, smear_param->alpha3);
     default: errorQuda("Unkown gauge smear type %d", smear_param->smear_type);
     }
 
@@ -5724,6 +5732,11 @@ void performGaugeSmearQuda(QudaGaugeSmearParam *smear_param, QudaGaugeObservable
   }
 
   delete cudaGaugeTemp;
+  if (smear_param->smear_type == QUDA_GAUGE_SMEAR_HYP) {
+    for (int i = 0; i < 4; ++i) {
+      delete cudaGaugeHYPTemp[i];
+    }
+  }
   profileGaugeSmear.TPSTOP(QUDA_PROFILE_TOTAL);
   popOutputPrefix();
 }
