@@ -81,8 +81,8 @@ namespace quda
     // parity for gauge field - include residual parity from 5-d => 4-d checkerboarding
     const int gauge_parity = (Arg::nDim == 5 ? (coord.x_cb / arg.dc.volume_4d_cb + parity) % 2 : parity);
 
-    const real single = 1.0 + 0.75 * arg.improve;
-    const real triple = -0.25 * arg.improve;
+    const real single = 1.0 - 0.75 * arg.improve;
+    const real triple = 0.25 * arg.improve;
 
 #pragma unroll
     for (int d = 0; d < 4; d++) { // loop over dimension - 4 and not nDim since this is used for DWF as well

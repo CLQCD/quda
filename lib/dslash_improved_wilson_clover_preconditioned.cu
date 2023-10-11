@@ -111,7 +111,7 @@ namespace quda
 
     inline ImprovedWilsonCloverPreconditionedApply(ColorSpinorField &out, const ColorSpinorField &in, const GaugeField &U,
                                                    const GaugeField &L, const CloverField &A, double a,
-                                                   const ColorSpinorField &x, int parity, double improve, bool dagger, const int *comm_override,
+                                                   const ColorSpinorField &x, double improve, int parity, bool dagger, const int *comm_override,
                                                    TimeProfile &profile)
     {
       constexpr int nDim = 4;
