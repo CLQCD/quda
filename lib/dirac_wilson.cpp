@@ -5,7 +5,7 @@
 
 namespace quda {
 
-  DiracWilson::DiracWilson(const DiracParam &param) : Dirac(param), long_gauge(param.longGauge), improve(param.improve) { }
+  DiracWilson::DiracWilson(const DiracParam &param) : Dirac(param), improve(param.improve), long_gauge(param.longGauge) { }
 
   DiracWilson::DiracWilson(const DiracWilson &dirac) : Dirac(dirac) { }
 
