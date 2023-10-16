@@ -143,7 +143,7 @@ namespace quda
         constexpr int proj_dir = dagger ? +1 : -1;
 
         const bool ghost
-            = (coord[d] + arg.nFace >= arg.dim[d]) && isActive<kernel_type>(active, thread_dim, d, coord, arg);
+            = (coord[d] + 3 >= arg.dim[d]) && isActive<kernel_type>(active, thread_dim, d, coord, arg);
 
         if (doBulk<kernel_type>() && !ghost) {
 
@@ -159,7 +159,7 @@ namespace quda
         const int gauge_idx = back3_idx;
         constexpr int proj_dir = dagger ? -1 : +1;
 
-        const bool ghost = (coord[d] - arg.nFace < 0) && isActive<kernel_type>(active, thread_dim, d, coord, arg);
+        const bool ghost = (coord[d] - 3 < 0) && isActive<kernel_type>(active, thread_dim, d, coord, arg);
 
         if (doBulk<kernel_type>() && !ghost) {
 
