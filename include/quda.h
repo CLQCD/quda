@@ -1741,7 +1741,6 @@ extern "C" {
   * Create deflation solver resources.
   *
   **/
-
   void* newDeflationQuda(QudaEigParam *param);
 
   /**
