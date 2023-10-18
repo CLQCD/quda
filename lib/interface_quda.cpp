@@ -5730,7 +5730,9 @@ void performGaugeSmearQuda(QudaGaugeSmearParam *smear_param, QudaGaugeObservable
     case QUDA_GAUGE_SMEAR_OVRIMP_STOUT:
       OvrImpSTOUTStep(*gaugeSmeared, *cudaGaugeTemp, smear_param->rho, smear_param->epsilon);
       break;
-    case QUDA_GAUGE_SMEAR_HYP: HYPStep(*gaugeSmeared, *cudaGaugeTemp, cudaGaugeHYPTemp, smear_param->alpha1, smear_param->alpha2, smear_param->alpha3);
+    case QUDA_GAUGE_SMEAR_HYP:
+      HYPStep(*gaugeSmeared, *cudaGaugeTemp, cudaGaugeHYPTemp, smear_param->alpha1, smear_param->alpha2, smear_param->alpha3);
+      break;
     default: errorQuda("Unkown gauge smear type %d", smear_param->smear_type);
     }
 

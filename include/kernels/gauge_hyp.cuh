@@ -262,16 +262,16 @@ namespace quda
 
       {
         // Get link U_{\nu}(x)
-        Link U1 = arg.tmp[nu / 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), parity);
+        Link U1 = arg.tmp[nu / 2 + 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), parity);
 
         // Get link U_{\mu}(x+\nu)
         dx[nu]++;
-        Link U2 = arg.tmp[mu / 2]((mu % 2) * 3 + nu - (nu > mu), linkIndexShift(x, dx, X), 1 - parity);
+        Link U2 = arg.tmp[mu / 2 + 2]((mu % 2) * 3 + nu - (nu > mu), linkIndexShift(x, dx, X), 1 - parity);
         dx[nu]--;
 
         // Get link U_{\nu}(x+\mu)
         dx[mu]++;
-        Link U3 = arg.tmp[nu / 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), 1 - parity);
+        Link U3 = arg.tmp[nu / 2 + 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), 1 - parity);
         dx[mu]--;
 
         // staple += U_{\nu}(x) * U_{\mu}(x+\nu) * U^\dag_{\nu}(x+\mu)
@@ -281,13 +281,13 @@ namespace quda
       {
         // Get link U_{\nu}(x-\nu)
         dx[nu]--;
-        Link U1 = arg.tmp[nu / 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), 1 - parity);
+        Link U1 = arg.tmp[nu / 2 + 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), 1 - parity);
         // Get link U_{\mu}(x-\nu)
-        Link U2 = arg.tmp[mu / 2]((mu % 2) * 3 + nu - (nu > mu), linkIndexShift(x, dx, X), 1 - parity);
+        Link U2 = arg.tmp[mu / 2 + 2]((mu % 2) * 3 + nu - (nu > mu), linkIndexShift(x, dx, X), 1 - parity);
 
         // Get link U_{\nu}(x-\nu+\mu)
         dx[mu]++;
-        Link U3 = arg.tmp[nu / 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), parity);
+        Link U3 = arg.tmp[nu / 2 + 2]((nu % 2) * 3 + mu - (mu > nu), linkIndexShift(x, dx, X), parity);
 
         // reset dx
         dx[mu]--;

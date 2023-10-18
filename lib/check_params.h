@@ -1099,12 +1099,18 @@ void printQudaGaugeSmearParam(QudaGaugeSmearParam *param)
   P(meas_interval, 0);
   P(alpha, 0.0);
   P(rho, 0.0);
+  P(alpha1, 0.0);
+  P(alpha2, 0.0);
+  P(alpha3, 0.0);
   P(epsilon, 0.0);
 #else
   P(n_steps, (unsigned int)INVALID_INT);
   P(meas_interval, (unsigned int)INVALID_INT);
   P(alpha, INVALID_DOUBLE);
   P(rho, INVALID_DOUBLE);
+  P(alpha1, INVALID_DOUBLE);
+  P(alpha2, INVALID_DOUBLE);
+  P(alpha3, INVALID_DOUBLE);
   P(epsilon, INVALID_DOUBLE);
 #endif
 

@@ -8,7 +8,7 @@ namespace quda {
 
   template <typename Float, int nColor, QudaReconstructType recon> class GaugeHYPLevel1 : TunableKernel3D
   {
-    static constexpr int apeDim = 3; // apply APE in space only
+    static constexpr int apeDim = 4; // apply APE in space only
     GaugeField &out;
     const GaugeField &in;
     GaugeField *tmp[4];
@@ -55,7 +55,7 @@ namespace quda {
 
   template <typename Float, int nColor, QudaReconstructType recon> class GaugeHYPLevel2 : TunableKernel3D
   {
-    static constexpr int apeDim = 3; // apply APE in space only
+    static constexpr int apeDim = 4; // apply APE in space only
     GaugeField &out;
     const GaugeField &in;
     GaugeField *tmp[4];
@@ -102,7 +102,7 @@ namespace quda {
 
   template <typename Float, int nColor, QudaReconstructType recon> class GaugeHYPLevel3 : TunableKernel3D
   {
-    static constexpr int apeDim = 3; // apply APE in space only
+    static constexpr int apeDim = 4; // apply APE in space only
     GaugeField &out;
     const GaugeField &in;
     GaugeField *tmp[4];
