@@ -32,7 +32,6 @@ namespace quda {
     } else {
       ApplyImprovedWilson(out, in, *gauge, *long_gauge, 0.0, in, improve, parity, dagger, commDim, profile);
     }
-    flops += 1320ll*in.Volume();
   }
 
   void DiracWilson::DslashXpay(ColorSpinorField &out, const ColorSpinorField &in, const QudaParity parity,
@@ -46,7 +45,6 @@ namespace quda {
     } else {
       ApplyImprovedWilson(out, in, *gauge, *long_gauge, k, x, improve, parity, dagger, commDim, profile);
     }
-    flops += 1368ll*in.Volume();
   }
 
   void DiracWilson::M(ColorSpinorField &out, const ColorSpinorField &in) const
@@ -58,7 +56,6 @@ namespace quda {
     } else {
       ApplyImprovedWilson(out, in, *gauge, *long_gauge, -kappa, in, improve, QUDA_INVALID_PARITY, dagger, commDim, profile);
     }
-    flops += 1368ll * in.Volume();
   }
 
   void DiracWilson::MdagM(ColorSpinorField &out, const ColorSpinorField &in) const

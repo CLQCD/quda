@@ -42,7 +42,6 @@ namespace quda {
     } else {
       ApplyImprovedWilsonClover(out, in, *gauge, *long_gauge, *clover, k, x, improve, parity, dagger, commDim, profile);
     }
-    flops += 1872ll*in.Volume();
   }
 
   // Public method to apply the clover term only
@@ -51,7 +50,6 @@ namespace quda {
     checkParitySpinor(in, out);
 
     ApplyClover(out, in, *clover, false, parity);
-    flops += 504ll*in.Volume();
   }
 
   void DiracClover::M(ColorSpinorField &out, const ColorSpinorField &in) const
@@ -61,7 +59,6 @@ namespace quda {
     } else {
       ApplyImprovedWilsonClover(out, in, *gauge, *long_gauge, *clover, -kappa, in, improve, QUDA_INVALID_PARITY, dagger, commDim, profile);
     }
-    flops += 1872ll * in.Volume();
   }
 
   void DiracClover::MdagM(ColorSpinorField &out, const ColorSpinorField &in) const
@@ -113,7 +110,7 @@ namespace quda {
     DiracClover(param)
   {
     // For the preconditioned operator, we need to check that the inverse of the clover term is present
-    if (!clover->cloverInv && !clover::dynamic_inverse()) errorQuda("Clover inverse required for DiracCloverPC");
+    if (!clover->Inverse() && !clover::dynamic_inverse()) errorQuda("Clover inverse required for DiracCloverPC");
   }
 
   DiracCloverPC::DiracCloverPC(const DiracCloverPC &dirac) : DiracClover(dirac) { }
@@ -135,7 +132,6 @@ namespace quda {
     checkParitySpinor(in, out);
 
     ApplyClover(out, in, *clover, true, parity);
-    flops += 504ll*in.Volume();
   }
 
   // apply hopping term, then clover: (A_ee^-1 D_eo) or (A_oo^-1 D_oe),
@@ -152,7 +148,6 @@ namespace quda {
     } else {
       ApplyImprovedWilsonCloverPreconditioned(out, in, *gauge, *long_gauge, *clover, 0.0, in, improve, parity, dagger, commDim, profile);
     }
-    flops += 1824ll*in.Volume();
   }
 
   // xpay version of the above
@@ -168,7 +163,6 @@ namespace quda {
     } else {
       ApplyImprovedWilsonCloverPreconditioned(out, in, *gauge, *long_gauge, *clover, k, x, improve, parity, dagger, commDim, profile);
     }
-    flops += 1872ll*in.Volume();
   }
 
   // Apply the even-odd preconditioned clover-improved Dirac operator
