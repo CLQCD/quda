@@ -505,7 +505,7 @@ namespace quda {
 
   protected:
     double improve;
-    cudaGaugeField *long_gauge;
+    GaugeField *long_gauge;
 
     void initConstants();
 
