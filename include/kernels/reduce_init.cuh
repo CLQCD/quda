@@ -1,6 +1,11 @@
 #include <reduce_helper.h>
 #include <kernel.h>
 
+__device__ inline void *operator new(size_t size, void *__ptr) { return __ptr; }
+__device__ inline void *operator new[](size_t size, void *__ptr) { return __ptr; }
+__device__ inline void operator delete(void *, void *) {}
+__device__ inline void operator delete[](void *, void *) {}
+
 namespace quda {
 
   namespace reducer {

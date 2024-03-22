@@ -430,6 +430,7 @@ if(QUDA_DOWNLOAD_EIGEN)
     NAME Eigen
     VERSION ${QUDA_EIGEN_VERSION}
     URL https://gitlab.com/libeigen/eigen/-/archive/${QUDA_EIGEN_VERSION}/eigen-${QUDA_EIGEN_VERSION}.tar.bz2
+    URL_HASH MD5=132DDE48FE2B563211675626D29F1707
     DOWNLOAD_ONLY YES
     SYSTEM YES)
   target_include_directories(Eigen SYSTEM INTERFACE ${Eigen_SOURCE_DIR})

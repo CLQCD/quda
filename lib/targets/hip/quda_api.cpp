@@ -125,9 +125,16 @@ namespace quda
   qudaError_t qudaLaunchKernel(const void *func, const TuneParam &tp, const qudaStream_t &stream, const void *arg)
   {
     // no driver API variant here since we have C++ functions
-    void *args[] = {const_cast<void *>(arg)};
-    PROFILE(hipError_t error = hipLaunchKernel(func, tp.grid, tp.block, args, tp.shared_bytes, get_stream(stream)),
-            QUDA_PROFILE_LAUNCH_KERNEL);
+    struct hipFuncAttributes attr;
+    qudaFuncGetAttributes(attr, func);
+    hipError_t error;
+    if (tp.block.x * tp.block.y * tp.block.z > attr.maxThreadsPerBlock) {
+      error = hipErrorLaunchFailure;
+    } else {
+      void *args[] = {const_cast<void *>(arg)};
+      PROFILE(error = hipLaunchKernel(func, tp.grid, tp.block, args, tp.shared_bytes, get_stream(stream)),
+              QUDA_PROFILE_LAUNCH_KERNEL);
+    }
     set_runtime_error(error, __func__, __func__, __FILE__, __STRINGIFY__(__LINE__), activeTuning());
     return error == hipSuccess ? QUDA_SUCCESS : QUDA_ERROR;
   }
