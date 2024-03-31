@@ -17,6 +17,7 @@ namespace quda {
     type(param.type),
     halo_precision(param.halo_precision),
     use_mobius_fused_kernel(param.use_mobius_fused_kernel),
+    chebyshev_degree(param.chebyshev_degree),
     profile("Dirac", false)
   {
     for (int i=0; i<4; i++) commDim[i] = param.commDim[i];
@@ -30,6 +31,7 @@ namespace quda {
     dagger(dirac.dagger),
     type(dirac.type),
     halo_precision(dirac.halo_precision),
+    chebyshev_degree(dirac.chebyshev_degree),
     profile("Dirac", false)
   {
     for (int i=0; i<4; i++) commDim[i] = dirac.commDim[i];
@@ -49,6 +51,8 @@ namespace quda {
       laplace3D = dirac.laplace3D;
       matpcType = dirac.matpcType;
       dagger = dirac.dagger;
+
+      chebyshev_degree = dirac.chebyshev_degree;
 
       for (int i=0; i<4; i++) commDim[i] = dirac.commDim[i];
 
@@ -160,6 +164,12 @@ namespace quda {
     } else if (param.type == QUDA_MOBIUS_DOMAIN_WALLPC_EOFA_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracMobiusEofaPC operator\n");
       return new DiracMobiusEofaPC(param);
+    } else if (param.type == QUDA_OVERLAP_DIRAC) {
+      if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracOverlap operator\n");
+      return new DiracOverlap(param);
+    } else if (param.type == QUDA_OVERLAPPC_DIRAC) {
+      if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracOverlapPC operator\n");
+      errorQuda("Overlap Dirac doesn't support even-odd preconditioning\n");
     } else if (param.type == QUDA_STAGGERED_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracStaggered operator\n");
       return new DiracStaggered(param);
@@ -269,6 +279,10 @@ namespace quda {
       case QUDA_COARSEPC_DIRAC:
       case QUDA_GAUGE_LAPLACEPC_DIRAC:
         steps = 2;
+        break;
+      case QUDA_OVERLAP_DIRAC:
+      case QUDA_OVERLAPPC_DIRAC:
+        steps = chebyshev_degree;
         break;
       default:
         errorQuda("Unsupported Dslash type %d.\n", type);

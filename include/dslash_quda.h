@@ -632,6 +632,30 @@ namespace quda
   void ApplyDslash5(ColorSpinorField &out, const ColorSpinorField &in, const ColorSpinorField &x, double m_f,
                     double m_5, const Complex *b_5, const Complex *c_5, double a, bool dagger, Dslash5Type type);
 
+  /**
+     @brief Driver for applying the Wilson stencil
+
+     out = D * in
+
+     where D is the gauged Wilson linear operator.
+
+     If kappa is non-zero, the operation is given by out = x + kappa * D in.
+     This operator can be applied to both single parity
+     (checker-boarded) fields, or to full fields.
+
+     @param[out] out The output result field
+     @param[in] in The input field
+     @param[in] U The gauge field used for the operator
+     @param[in] kappa Scale factor applied
+     @param[in] x Vector field we accumulate onto to
+     @param[in] parity Destination parity
+     @param[in] dagger Whether this is for the dagger operator
+     @param[in] comm_override Override for which dimensions are partitioned
+     @param[in] profile The TimeProfile used for profiling the dslash
+  */
+  void ApplyOverlap(ColorSpinorField &out, const ColorSpinorField &in, const GaugeField &U, double kappa,
+                   const ColorSpinorField &x, int parity, bool dagger, const int *comm_override, TimeProfile &profile);
+
   // The EOFA stuff
   namespace mobius_eofa
   {

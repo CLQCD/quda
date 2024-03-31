@@ -50,7 +50,8 @@ namespace quda
     std::swap(v[j], r[0]);
 
     // r_{j} = M * v_{j};
-    mat(r[0], v[j]);
+    // mat(r[0], v[j]);
+    chebyOp(r[0], v[j]);
 
     double beta_pre = sqrt(blas::norm2(r[0]));
 
@@ -444,7 +445,8 @@ namespace quda
 
     // Apply a matrix op to the residual to place it in the
     // range of the operator
-    mat(r[0], kSpace[0]);
+    // mat(r[0], kSpace[0]);
+    chebyOp(r[0], kSpace[0]);
 
     // Convergence criteria
     double epsilon = setEpsilon(kSpace[0].Precision());

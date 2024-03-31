@@ -447,6 +447,10 @@ extern "C" {
     /** Whether to use fused kernels for mobius */
     QudaBoolean use_mobius_fused_kernel;
 
+    int hermitian_wilson_n_ev;
+    int hermitian_wilson_n_kr;
+    double hermitian_wilson_tol;
+    double overlap_invsqrt_tol;
   } QudaInvertParam;
 
   // Parameter set for solving eigenvalue problems.

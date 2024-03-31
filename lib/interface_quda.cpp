@@ -1478,6 +1478,9 @@ namespace quda {
                 diracParam.c_5[i].imag());
       }
       break;
+    case QUDA_OVERLAP_DSLASH:
+      diracParam.type = pc ? QUDA_OVERLAPPC_DIRAC : QUDA_OVERLAP_DIRAC;
+      break;
     case QUDA_STAGGERED_DSLASH:
       diracParam.type = pc ? QUDA_STAGGEREDPC_DIRAC : QUDA_STAGGERED_DIRAC;
       break;
@@ -1771,6 +1774,79 @@ namespace quda {
 
     logQuda(QUDA_DEBUG_VERBOSE, "Mass rescale: norm of source out = %g\n", blas::norm2(b));
   }
+
+  void setupHermitianWilson(QudaInvertParam *param, const lat_dim_t &X, std::vector<ColorSpinorField> &evecs, std::vector<Complex> &evals)
+  {
+    DiracParam diracWilsonParam;
+    setDiracParam(diracWilsonParam, param, false);
+    Dirac *dWilson = new DiracWilson(diracWilsonParam);
+
+    // Construct vectors
+    //------------------------------------------------------
+    // Create host wrappers around application vector set
+    ColorSpinorParam cpuParam(nullptr, *param, X, QUDA_MAT_SOLUTION, QUDA_CUDA_FIELD_LOCATION);
+
+    int n_eig = param->hermitian_wilson_n_ev;
+
+    // Create device side ColorSpinorField vector space to pass to the
+    // compute function. Download any user supplied data as an initial guess.
+    ColorSpinorParam cudaParam(cpuParam, *param, QUDA_CUDA_FIELD_LOCATION);
+    cudaParam.create = QUDA_ZERO_FIELD_CREATE;
+    cudaParam.setPrecision(param->cuda_prec_eigensolver, param->cuda_prec_eigensolver, true);
+    // Ensure device vectors qre in UKQCD basis for Wilson type fermions
+    cudaParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+
+    for (int i = 0; i < n_eig; i++) {
+      evecs[i] = ColorSpinorField(cudaParam);
+      evals[i] = 0.0;
+    }
+
+    //------------------------------------------------------
+    // We must construct the correct Dirac operator type based on the three
+    // options: The normal operator, the daggered operator, and if we pre
+    // multiply by gamma5. Each combination requires a unique Dirac operator
+    // object.
+
+    // Use MdagM=(G5M)^2 to make sure all eigenvalus>0
+    DiracMatrix *mWilson = new DiracMdagM(*dWilson);
+    QudaEigParam eig_param = newQudaEigParam();
+    int n_kr = param->hermitian_wilson_n_kr;
+
+    eig_param.eig_type = QUDA_EIG_TR_LANCZOS;
+    eig_param.use_poly_acc = QUDA_BOOLEAN_TRUE;
+    eig_param.poly_deg = 50;
+    eig_param.a_min = 0.2 * 0.2;
+    eig_param.a_max = (1 + 8 * param->kappa) * (1 + 8 * param->kappa);
+    eig_param.use_dagger = QUDA_BOOLEAN_FALSE;
+    eig_param.use_norm_op = QUDA_BOOLEAN_TRUE;
+    eig_param.use_pc = QUDA_BOOLEAN_FALSE;
+    eig_param.compute_gamma5 = QUDA_BOOLEAN_FALSE;
+    eig_param.spectrum = QUDA_SPECTRUM_SR_EIG;
+    eig_param.n_ev = param->hermitian_wilson_n_ev;
+    eig_param.n_kr = param->hermitian_wilson_n_kr;
+    eig_param.n_conv = param->hermitian_wilson_n_ev;
+    eig_param.tol = param->hermitian_wilson_tol;
+    eig_param.vec_infile[0] = 0;
+    eig_param.vec_outfile[0] = 0;
+    eig_param.max_restarts = 1000;
+
+    auto *eig_solve = quda::EigenSolver::create(&eig_param, *mWilson, profileEigensolve);
+    (*eig_solve)(evecs, evals);
+    delete eig_solve;
+
+    // Recalculate eigenvalues
+    delete mWilson;
+    mWilson = new DiracG5M(*dWilson);
+    ColorSpinorField tmp(cudaParam);
+    for (int i = 0; i < n_eig; ++i) {
+      (*mWilson)(tmp, evecs[i]);
+      evals[i] = blas::cDotProduct(tmp, evecs[i]);
+    }
+
+    delete mWilson;
+    delete dWilson;
+
+  }
 }
 
 void dslashQuda(void *h_out, void *h_in, QudaInvertParam *inv_param, QudaParity parity)
@@ -1879,6 +1955,17 @@ void MatQuda(void *h_out, void *h_in, QudaInvertParam *inv_param)
   setDiracParam(diracParam, inv_param, pc);
 
   Dirac *dirac = Dirac::create(diracParam); // create the Dirac operator
+
+  // Setup eigensystem for hermitian Wilson operator
+  if (inv_param->dslash_type == QUDA_OVERLAP_DSLASH) {
+    const int n_eig = inv_param->hermitian_wilson_n_ev;
+    const double invsqrt_tol = inv_param->overlap_invsqrt_tol;
+    std::vector<ColorSpinorField> evecs(n_eig);
+    std::vector<Complex> evals(n_eig);
+    setupHermitianWilson(inv_param, gauge.X(), evecs, evals);
+    ((DiracOverlap *)dirac)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
+  }
+
   dirac->M(out, in); // apply the operator
   delete dirac; // clean up
 
@@ -2650,6 +2737,19 @@ void invertQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
   // Create the dirac operator and operators for sloppy, precondition,
   // and an eigensolver
   createDiracWithEig(d, dSloppy, dPre, dEig, *param, pc_solve);
+
+  // Setup eigensystem for hermitian Wilson operator
+  if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
+    const int n_eig = param->hermitian_wilson_n_ev;
+    const double invsqrt_tol = param->overlap_invsqrt_tol;
+    std::vector<ColorSpinorField> evecs(n_eig);
+    std::vector<Complex> evals(n_eig);
+    setupHermitianWilson(param, cudaGauge->X(), evecs, evals);
+    ((DiracOverlap *)d)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
+    ((DiracOverlap *)dSloppy)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
+    ((DiracOverlap *)dPre)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
+    ((DiracOverlap *)dEig)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
+  }
 
   Dirac &dirac = *d;
   Dirac &diracSloppy = *dSloppy;
