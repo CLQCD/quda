@@ -370,6 +370,8 @@ void printQudaInvertParam(QudaInvertParam *param) {
   P(twist_flavor, QUDA_TWIST_INVALID);
   P(laplace3D, INVALID_INT);
   P(covdev_mu, INVALID_INT);
+  P(shift_only, QUDA_BOOLEAN_FALSE);
+  P(staggered, QUDA_BOOLEAN_TRUE);
 #else
   // asqtad and domain wall use mass parameterization
   if (param->dslash_type == QUDA_STAGGERED_DSLASH || param->dslash_type == QUDA_ASQTAD_DSLASH
@@ -391,7 +393,13 @@ void printQudaInvertParam(QudaInvertParam *param) {
   }
   if (param->dslash_type == QUDA_TWISTED_CLOVER_DSLASH) { P(tm_rho, INVALID_DOUBLE); }
   if (param->twist_flavor == QUDA_TWIST_NONDEG_DOUBLET) { P(epsilon, INVALID_DOUBLE); }
-  if (param->dslash_type == QUDA_COVDEV_DSLASH) { P(covdev_mu, INVALID_INT); }
+  if (param->dslash_type == QUDA_COVDEV_DSLASH) {
+    P(covdev_mu, INVALID_INT);
+    P(shift_only, QUDA_BOOLEAN_INVALID);
+  }
+  if (param->dslash_type == QUDA_LAPLACE_DSLASH || param->dslash_type == QUDA_COVDEV_DSLASH) {
+    P(staggered, QUDA_BOOLEAN_INVALID);
+  }
 #endif
 
   P(tol, INVALID_DOUBLE);
