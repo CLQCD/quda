@@ -13,14 +13,28 @@ namespace quda {
     mass(param.mass),
     laplace3D(param.laplace3D),
     matpcType(param.matpcType),
+    this_parity(QUDA_INVALID_PARITY),
+    other_parity(QUDA_INVALID_PARITY),
     dagger(param.dagger),
     type(param.type),
     halo_precision(param.halo_precision),
+    commDim(param.commDim),
     use_mobius_fused_kernel(param.use_mobius_fused_kernel),
     chebyshev_degree(param.chebyshev_degree),
+    distance_pc_alpha0(param.distance_pc_alpha0),
+    distance_pc_t0(param.distance_pc_t0),
     profile("Dirac", false)
   {
-    for (int i=0; i<4; i++) commDim[i] = param.commDim[i];
+    if (matpcType == QUDA_MATPC_EVEN_EVEN || matpcType == QUDA_MATPC_EVEN_EVEN_ASYMMETRIC) {
+      this_parity = QUDA_EVEN_PARITY;
+      other_parity = QUDA_ODD_PARITY;
+    } else if (matpcType == QUDA_MATPC_ODD_ODD || matpcType == QUDA_MATPC_ODD_ODD_ASYMMETRIC) {
+      this_parity = QUDA_ODD_PARITY;
+      other_parity = QUDA_EVEN_PARITY;
+    } else {
+      errorQuda("Invalid matpcType(%d) in function\n", matpcType);
+    }
+    symmetric = (matpcType == QUDA_MATPC_EVEN_EVEN || matpcType == QUDA_MATPC_ODD_ODD);
   }
 
   Dirac::Dirac(const Dirac &dirac) :
@@ -28,13 +42,18 @@ namespace quda {
     kappa(dirac.kappa),
     laplace3D(dirac.laplace3D),
     matpcType(dirac.matpcType),
+    this_parity(dirac.this_parity),
+    other_parity(dirac.other_parity),
+    symmetric(dirac.symmetric),
     dagger(dirac.dagger),
     type(dirac.type),
     halo_precision(dirac.halo_precision),
     chebyshev_degree(dirac.chebyshev_degree),
+    commDim(dirac.commDim),
+    distance_pc_alpha0(dirac.distance_pc_alpha0),
+    distance_pc_t0(dirac.distance_pc_t0),
     profile("Dirac", false)
   {
-    for (int i=0; i<4; i++) commDim[i] = dirac.commDim[i];
   }
 
   // Destroy
@@ -50,12 +69,16 @@ namespace quda {
       kappa = dirac.kappa;
       laplace3D = dirac.laplace3D;
       matpcType = dirac.matpcType;
+      this_parity = dirac.this_parity;
+      other_parity = dirac.other_parity;
+      symmetric = dirac.symmetric;
       dagger = dirac.dagger;
 
       chebyshev_degree = dirac.chebyshev_degree;
 
-      for (int i=0; i<4; i++) commDim[i] = dirac.commDim[i];
-
+      commDim = dirac.commDim;
+      distance_pc_alpha0 = dirac.distance_pc_alpha0;
+      distance_pc_t0 = dirac.distance_pc_t0;
       profile = dirac.profile;
 
       if (type != dirac.type) errorQuda("Trying to copy between incompatible types %d %d", type, dirac.type);
@@ -81,42 +104,46 @@ namespace quda {
 
 #undef flip
 
-  void Dirac::checkParitySpinor(const ColorSpinorField &out, const ColorSpinorField &in) const
+  void Dirac::checkParitySpinor(cvector_ref<const ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
-    if ( (in.GammaBasis() != QUDA_UKQCD_GAMMA_BASIS || out.GammaBasis() != QUDA_UKQCD_GAMMA_BASIS) && 
-	 in.Nspin() == 4) {
-      errorQuda("Dirac operator requires UKQCD basis, out = %d, in = %d", out.GammaBasis(), in.GammaBasis());
-    }
-
-    if (in.SiteSubset() != QUDA_PARITY_SITE_SUBSET || out.SiteSubset() != QUDA_PARITY_SITE_SUBSET) {
-      errorQuda("ColorSpinorFields are not single parity: in = %d, out = %d", 
-		in.SiteSubset(), out.SiteSubset());
-    }
-
-    if (out.Ndim() != 5) {
-      if ((out.Volume() != gauge->Volume() && out.SiteSubset() == QUDA_FULL_SITE_SUBSET) ||
-	  (out.Volume() != gauge->VolumeCB() && out.SiteSubset() == QUDA_PARITY_SITE_SUBSET) ) {
-        errorQuda("Spinor volume %lu doesn't match gauge volume %lu", out.Volume(), gauge->VolumeCB());
+    for (auto i = 0u; i < out.size(); i++) {
+      if ((in[i].GammaBasis() != QUDA_UKQCD_GAMMA_BASIS || out[i].GammaBasis() != QUDA_UKQCD_GAMMA_BASIS)
+          && in[i].Nspin() == 4) {
+        errorQuda("Dirac operator requires UKQCD basis, out = %d, in = %d", out[i].GammaBasis(), in[i].GammaBasis());
       }
-    } else {
-      // Domain wall fermions, compare 4d volumes not 5d
-      if ((out.Volume()/out.X(4) != gauge->Volume() && out.SiteSubset() == QUDA_FULL_SITE_SUBSET) ||
-	  (out.Volume()/out.X(4) != gauge->VolumeCB() && out.SiteSubset() == QUDA_PARITY_SITE_SUBSET) ) {
-        errorQuda("Spinor volume %lu doesn't match gauge volume %lu", out.Volume(), gauge->VolumeCB());
+
+      if (in[i].SiteSubset() != QUDA_PARITY_SITE_SUBSET || out[i].SiteSubset() != QUDA_PARITY_SITE_SUBSET) {
+        errorQuda("ColorSpinorFields are not single parity: in = %d, out = %d", in[i].SiteSubset(), out[i].SiteSubset());
+      }
+
+      if (out[i].Ndim() != 5) {
+        if ((out[i].Volume() != gauge->Volume() && out[i].SiteSubset() == QUDA_FULL_SITE_SUBSET)
+            || (out[i].Volume() != gauge->VolumeCB() && out[i].SiteSubset() == QUDA_PARITY_SITE_SUBSET)) {
+          errorQuda("Spinor volume %lu doesn't match gauge volume %lu", out[i].Volume(), gauge->VolumeCB());
+        }
+      } else {
+        // Domain wall fermions, compare 4d volumes not 5d
+        if ((out[i].Volume() / out[i].X(4) != gauge->Volume() && out[i].SiteSubset() == QUDA_FULL_SITE_SUBSET)
+            || (out[i].Volume() / out[i].X(4) != gauge->VolumeCB() && out[i].SiteSubset() == QUDA_PARITY_SITE_SUBSET)) {
+          errorQuda("Spinor volume %lu doesn't match gauge volume %lu", out[i].Volume(), gauge->VolumeCB());
+        }
       }
     }
   }
 
-  void Dirac::checkFullSpinor(const ColorSpinorField &out, const ColorSpinorField &in) const
+  void Dirac::checkFullSpinor(cvector_ref<const ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
-    if (in.SiteSubset() != QUDA_FULL_SITE_SUBSET || out.SiteSubset() != QUDA_FULL_SITE_SUBSET) {
-      errorQuda("ColorSpinorFields are not full fields: in = %d, out = %d", 
-		in.SiteSubset(), out.SiteSubset());
-    } 
+    for (auto i = 0u; i < out.size(); i++) {
+      if (in[i].SiteSubset() != QUDA_FULL_SITE_SUBSET || out[i].SiteSubset() != QUDA_FULL_SITE_SUBSET) {
+        errorQuda("ColorSpinorFields are not full fields: in = %d, out = %d", in[i].SiteSubset(), out[i].SiteSubset());
+      }
+    }
   }
 
-  void Dirac::checkSpinorAlias(const ColorSpinorField &a, const ColorSpinorField &b) const {
-    if (a.data() == b.data()) errorQuda("Aliasing pointers");
+  void Dirac::checkSpinorAlias(cvector_ref<const ColorSpinorField> &a, cvector_ref<const ColorSpinorField> &b) const
+  {
+    for (auto i = 0u; i < a.size(); i++)
+      if (a[i].data() == b[i].data()) errorQuda("Aliasing pointers");
   }
 
   // Dirac operator factory
@@ -131,15 +158,15 @@ namespace quda {
     } else if (param.type == QUDA_CLOVER_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracClover operator\n");
       return new DiracClover(param);
+    } else if (param.type == QUDA_CLOVERPC_DIRAC) {
+      if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracCloverPC operator\n");
+      return new DiracCloverPC(param);
     } else if (param.type == QUDA_CLOVER_HASENBUSCH_TWIST_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracCloverHasenbuschTwist operator\n");
       return new DiracCloverHasenbuschTwist(param);
     } else if (param.type == QUDA_CLOVER_HASENBUSCH_TWISTPC_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracCloverHasenbuschTwistPC operator\n");
       return new DiracCloverHasenbuschTwistPC(param);
-    } else if (param.type == QUDA_CLOVERPC_DIRAC) {
-      if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracCloverPC operator\n");
-      return new DiracCloverPC(param);
     } else if (param.type == QUDA_DOMAIN_WALL_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracDomainWall operator\n");
       return new DiracDomainWall(param);

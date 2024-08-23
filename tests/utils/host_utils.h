@@ -40,10 +40,19 @@ extern QudaPrecision &cuda_prec_eigensolver;
 extern QudaPrecision &cuda_prec_refinement_sloppy;
 extern QudaPrecision &cuda_prec_ritz;
 
+// Determine if the Laplace operator has been defined
+constexpr bool is_enabled_laplace()
+{
+#ifdef QUDA_DIRAC_LAPLACE
+  return true;
+#else
+  return false;
+#endif
+}
+
 // Set some basic parameters via command line or use defaults
 // Implemented in set_params.cpp
-void setQudaStaggeredEigTestParams();
-void setQudaStaggeredInvTestParams();
+void setQudaStaggeredDefaultInvTestParams();
 
 // Staggered gauge field utils
 //------------------------------------------------------
@@ -106,17 +115,29 @@ template <typename Float> void applyGaugeFieldScaling(Float **gauge, int Vh, Qud
 //------------------------------------------------------
 void constructWilsonTestSpinorParam(quda::ColorSpinorParam *csParam, const QudaInvertParam *inv_param,
                                     const QudaGaugeParam *gauge_param);
+void constructPointSpinorSource(void *v, QudaPrecision precision, const int *const x, const int dil,
+                                const int *const src);
+void constructWallSpinorSource(void *v, int nSpin, int nColor, QudaPrecision precision, const int dil);
 void constructRandomSpinorSource(void *v, int nSpin, int nColor, QudaPrecision precision, QudaSolutionType sol_type,
                                  const int *const x, int nDim, quda::RNG &rng);
 //------------------------------------------------------
 
 // Helper functions
 //------------------------------------------------------
-inline bool isPCSolution(QudaSolutionType solution_type)
-{
-  return (solution_type == QUDA_MATPC_SOLUTION || solution_type == QUDA_MATPC_DAG_SOLUTION
-          || solution_type == QUDA_MATPCDAG_MATPC_SOLUTION);
-}
+bool is_pc_solution(QudaSolutionType solution_type);
+bool is_full_solution(QudaSolutionType type);
+
+bool is_preconditioned_solve(QudaSolveType type);
+bool is_normal_solve(QudaInverterType inv_type, QudaSolveType solve_type);
+
+bool is_hermitian_solver(QudaInverterType type);
+bool support_solution_accumulator_pipeline(QudaInverterType type);
+bool is_normal_residual(QudaInverterType type);
+
+bool is_staggered(QudaDslashType type);
+bool is_chiral(QudaDslashType type);
+bool is_laplace(QudaDslashType type);
+
 //------------------------------------------------------
 
 // Reports basic statistics of flops and solver iterations
@@ -325,3 +346,7 @@ void setStaggeredMGInvertParam(QudaInvertParam &inv_param);
 void setGaugeParam(QudaGaugeParam &gauge_param);
 void setWilsonGaugeParam(QudaGaugeParam &gauge_param);
 void setStaggeredGaugeParam(QudaGaugeParam &gauge_param);
+
+// Smear param types
+void setGaugeSmearParam(QudaGaugeSmearParam &smear_param);
+void setFermionSmearParam(QudaInvertParam &inv_param, double omega, int steps);

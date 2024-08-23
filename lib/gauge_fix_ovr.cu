@@ -68,6 +68,9 @@ namespace quda {
     unsigned long threads;
     bool halo;
 
+    virtual int blockStep() const { return 32; }
+    virtual int blockMin() const { return 32; }
+
     bool advanceAux(TuneParam &param) const
     {
       param.aux.x = (param.aux.x + 1) % 6;
@@ -462,7 +465,6 @@ namespace quda {
       }
     }
 
-    qudaDeviceSynchronize();
     profileInternalGaugeFixOVR.TPSTOP(QUDA_PROFILE_COMPUTE);
     if (getVerbosity() >= QUDA_SUMMARIZE){
       double secs = profileInternalGaugeFixOVR.Last(QUDA_PROFILE_COMPUTE);

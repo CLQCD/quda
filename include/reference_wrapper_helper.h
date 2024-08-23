@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <enum_quda.h>
 #include <util_quda.h>
+#include <quda_internal.h>
 
 namespace quda
 {
@@ -166,8 +167,11 @@ namespace quda
    */
   template <class T>
   class vector_ref : public std::vector<std::reference_wrapper<T>> {
-    using vector = std::vector<std::reference_wrapper<T>>;
+  public:
     using value_type = T;
+
+  private:
+    using vector = std::vector<std::reference_wrapper<T>>;
 
     /**
        make_set is a helper function that creates a vector of
@@ -230,7 +234,7 @@ namespace quda
        Unary constructor
        @param[in] v Object to which we are constructing a vector_ref around
      */
-    template <class U> vector_ref(U &v)
+    template <class U> vector_ref(const U &v)
     {
       auto vset = make_set(v);
       vector::reserve(vset.size());
@@ -268,7 +272,7 @@ namespace quda
     /**
        @brief This overload allows us to directly access the
        underlying reference without needing to invoke get() like would
-       do for the parent method.  Moreover, we intentionally mark this
+       we do for the parent method.  Moreover, we intentionally mark this
        function as const, since it will allow us to return non-const
        references from a constant container if the underlying
        references are themselves non-const.
@@ -276,6 +280,15 @@ namespace quda
        @return The underlying object reference
      */
     T& operator[](size_t idx) const { return vector::operator[](idx).get(); }
+
+    /**
+       @brief This is a convenience operator for constructing parity
+       subsets of the field.
+       @param[in] parity The parity subset we desire
+       @return A vector_ref instance that contains a vector of the
+       field subsets requested
+     */
+    vector_ref<T> operator()(QudaParity parity) const { return make_parity_subset(*this, parity); }
 
     template <class U = T>
     std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, vector_ref<T>> Even() const
@@ -294,6 +307,161 @@ namespace quda
       for (auto i = 0u; i < vector::size(); i++) odd.push_back(operator[](i).Odd());
       return odd;
     }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, QudaPrecision> Precision() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).Precision() != operator[](i).Precision())
+          errorQuda("Precisions %d %d do not match", operator[](i - 1).Precision(), operator[](i).Precision());
+      return operator[](0).Precision();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, int> Ncolor() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).Ncolor() != operator[](i).Ncolor())
+          errorQuda("Ncolors do not match %d != %d", operator[](i - 1).Ncolor(), operator[](i).Ncolor());
+      return operator[](0).Ncolor();
+    }
+
+    template <class U = T> std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, int> Nspin() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).Nspin() != operator[](i).Nspin())
+          errorQuda("Nspins do not match %d != %d", operator[](i - 1).Nspin(), operator[](i).Nspin());
+      return operator[](0).Nspin();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, QudaTwistFlavorType> TwistFlavor() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).TwistFlavor() != operator[](i).TwistFlavor())
+          errorQuda("Nspins do not match %d != %d", operator[](i - 1).TwistFlavor(), operator[](i).TwistFlavor());
+      return operator[](0).TwistFlavor();
+    }
+
+    template <class U = T> std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, int> Ndim() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).Ndim() != operator[](i).Ndim())
+          errorQuda("Ndims do not match %d != %d", operator[](i - 1).Ndim(), operator[](i).Ndim());
+      return operator[](0).Ndim();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, size_t> Volume() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).Volume() != operator[](i).Volume())
+          errorQuda("Volumes do not match %lu != %lu", operator[](i - 1).Volume(), operator[](i).Volume());
+      return operator[](0).Volume();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, size_t> VolumeCB() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).VolumeCB() != operator[](i).VolumeCB())
+          errorQuda("VolumeCBs do not match %lu != %lu", operator[](i - 1).VolumeCB(), operator[](i).VolumeCB());
+      return operator[](0).VolumeCB();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, int> X(int d) const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).X(d) != operator[](i).X(d))
+          errorQuda("Dimension %d does not match %d != %d", d, operator[](i - 1).X(d), operator[](i).X(d));
+      return operator[](0).X(d);
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, size_t> Length() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).Length() != operator[](i).Length())
+          errorQuda("Lengths do not match %lu != %lu", operator[](i - 1).Length(), operator[](i).Length());
+      return operator[](0).Length();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, size_t> Bytes() const
+    {
+      size_t bytes = 0;
+      for (auto i = 0u; i < vector::size(); i++) bytes += operator[](i).Bytes();
+      return bytes;
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, QudaSiteSubset> SiteSubset() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).SiteSubset() != operator[](i).SiteSubset())
+          errorQuda("Site subsets do not match %d != %d", operator[](i - 1).SiteSubset(), operator[](i).SiteSubset());
+      return operator[](0).SiteSubset();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, QudaPCType> PCType() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).PCType() != operator[](i).PCType())
+          errorQuda("PC types do not match %d != %d", operator[](i - 1).PCType(), operator[](i).PCType());
+      return operator[](0).PCType();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, QudaFieldOrder> FieldOrder() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).FieldOrder() != operator[](i).FieldOrder())
+          errorQuda("Orders do not match %d != %d", operator[](i - 1).FieldOrder(), operator[](i).FieldOrder());
+      return operator[](0).FieldOrder();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, QudaFieldLocation> Location() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).Location() != operator[](i).Location())
+          errorQuda("Locations do not match %d != %d", operator[](i - 1).Location(), operator[](i).Location());
+      return operator[](0).Location();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, bool> isNative() const
+    {
+      for (auto i = 0u; i < vector::size(); i++)
+        if (!operator[](i).isNative()) errorQuda("Non-native field detected %u", i);
+      return operator[](0).isNative();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, void> backup() const
+    {
+      for (auto i = 0u; i < vector::size(); i++) operator[](i).backup();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, void> restore() const
+    {
+      for (auto i = 0u; i < vector::size(); i++) operator[](i).restore();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, std::string> VolString() const
+    {
+      return operator[](0).VolString();
+    }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, std::string> AuxString() const
+    {
+      return operator[](0).AuxString();
+    }
   };
 
   template <class T> using cvector_ref = const vector_ref<T>;
@@ -308,8 +476,67 @@ namespace quda
     if (parity != QUDA_EVEN_PARITY && parity != QUDA_ODD_PARITY) errorQuda("Invalid parity %d requested", parity);
     vector_ref<typename T::value_type> out;
     out.reserve(in.size());
-    for (auto i = 0u; i < in.size(); i++) out.push_back(parity == QUDA_EVEN_PARITY ? in[i].Even() : in[i].Odd());
+    for (auto i = 0u; i < in.size(); i++) out.push_back(in[i][parity]);
     return out;
   }
+
+  /**
+     Derived specializaton of std::vector<T>
+     which allows us to write generic multi-scalar functions.
+   */
+  template <class T> struct vector : public std::vector<T> {
+    using value_type = T;
+
+    vector() = default;
+    vector(uint64_t size, const T &value = {}) : std::vector<T>(size, value) { }
+
+    /**
+       @brief Constructor using std::vector initialization
+       @param[in] u Vector we are copying from
+    */
+    template <class U, std::enable_if_t<std::is_same_v<U, std::vector<typename U::value_type>>> * = nullptr>
+    vector(const U &u)
+    {
+      std::vector<T>::reserve(u.size());
+      for (auto &v : u) std::vector<T>::push_back(v);
+    }
+
+    /**
+       @brief Constructor using a real-valued vector to initialize a
+       complex-valued vector
+       @param[in] u Real-valued vector input
+    */
+    template <class U, std::enable_if_t<std::is_same_v<std::complex<U>, T>> * = nullptr> vector(const vector<U> &u)
+    {
+      std::vector<T>::reserve(u.size());
+      for (auto &v : u) std::vector<T>::push_back(v);
+    }
+
+    /**
+       @brief Constructor using std::vector initialization
+       @param[in] u Scalar we are wrapping a vector around
+    */
+    vector(const T &t) : std::vector<T>(1, t) { }
+
+    /**
+       @brief Constructor using std::vector initialization
+       @param[in] u Scalar we are wrapping a vector around
+    */
+    template <class U, std::enable_if_t<std::is_same_v<std::complex<U>, T>> * = nullptr>
+    vector(const U &u) : std::vector<T>(1, u)
+    {
+    }
+
+    /**
+       @brief Cast to scalar.  Only works if the vector size is 1.
+    */
+    operator T() const
+    {
+      if (std::vector<T>::size() != 1) errorQuda("Cast to scalar failed since size = %lu", std::vector<T>::size());
+      return std::vector<T>::operator[](0);
+    }
+  };
+
+  template <class T> using cvector = const vector<T>;
 
 } // namespace quda

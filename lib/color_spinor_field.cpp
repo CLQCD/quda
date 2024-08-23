@@ -105,7 +105,9 @@ namespace quda
 
     precision = param.Precision();
 
-    if (twistFlavor == QUDA_TWIST_NONDEG_DOUBLET && x[4] != 2) // two flavors
+    if (twistFlavor == QUDA_TWIST_NONDEG_DOUBLET && x[4] != 2
+        && !(param.create == QUDA_GHOST_FIELD_CREATE
+             || (param.create == QUDA_REFERENCE_FIELD_CREATE && param.siteSubset == QUDA_PARITY_SITE_SUBSET))) // two flavors
       errorQuda(
         "Must be two flavors for non-degenerate twisted mass spinor (while provided with %d number of components)",
         x[4]);
@@ -246,7 +248,7 @@ namespace quda
     even = std::exchange(src.even, nullptr);
     odd = std::exchange(src.odd, nullptr);
     composite_descr = std::exchange(src.composite_descr, CompositeColorSpinorFieldDescriptor());
-    components = std::move(src.components);
+    components = std::exchange(src.components, {});
   }
 
   void ColorSpinorField::destroy()
@@ -296,6 +298,12 @@ namespace quda
     }
   }
 
+  const DslashConstant &ColorSpinorField::getDslashConstant() const
+  {
+    if (!dslash_constant) errorQuda("Dslash constant not initialized");
+    return *dslash_constant;
+  }
+
   void ColorSpinorField::createGhostZone(int nFace, bool spin_project) const
   {
     if (ghost_precision == QUDA_INVALID_PRECISION) errorQuda("Invalid requested ghost precision");
@@ -341,8 +349,6 @@ namespace quda
       for (int dim = 0; dim < nDim; dim++) X[dim] = x[dim];
       for (int dim = nDim; dim < QUDA_MAX_DIM; dim++) X[dim] = 1;
       if (siteSubset == QUDA_PARITY_SITE_SUBSET) X[0] = 2 * X[0];
-
-      for (int i = 0; i < nDim; i++) dc.Xh[i] = X[i] / 2;
 
       dc.Ls = X[4];
       dc.volume_4d_cb = volumeCB / (nDim == 5 ? x[4] : 1);
@@ -401,6 +407,12 @@ namespace quda
 
   void ColorSpinorField::copy(const ColorSpinorField &src)
   {
+    // if these are the same field then return
+    if (data() == src.data()) {
+      if (are_compatible(*this, src)) return;
+      else errorQuda("Aliasing pointers with incompatible fields");
+    }
+
     test_compatible_weak(*this, src);
 
     if (src.Location() == QUDA_CUDA_FIELD_LOCATION && location == QUDA_CPU_FIELD_LOCATION) {
@@ -421,7 +433,6 @@ namespace quda
         copyGenericColorSpinor(*this, src, QUDA_CPU_FIELD_LOCATION, buffer, 0);
         qudaMemcpy(v.data(), buffer, bytes, qudaMemcpyDefault);
         pool_pinned_free(buffer);
-
       } else { // reorder on device
 
         if (src.FieldOrder() == QUDA_PADDED_SPACE_SPIN_COLOR_FIELD_ORDER) {
@@ -453,11 +464,10 @@ namespace quda
     } else if (Location() == QUDA_CPU_FIELD_LOCATION && src.Location() == QUDA_CUDA_FIELD_LOCATION) { // D2H
 
       if (reorder_location() == QUDA_CPU_FIELD_LOCATION) { // reorder on the host
-        void *buffer = pool_pinned_malloc(bytes);
-        qudaMemcpy(buffer, v.data(), bytes, qudaMemcpyDefault);
+        void *buffer = pool_pinned_malloc(src.Bytes());
+        qudaMemcpy(buffer, src.data(), src.Bytes(), qudaMemcpyDefault);
         copyGenericColorSpinor(*this, src, QUDA_CPU_FIELD_LOCATION, 0, buffer);
         pool_pinned_free(buffer);
-
       } else { // reorder on the device
 
         if (FieldOrder() == QUDA_PADDED_SPACE_SPIN_COLOR_FIELD_ORDER) {
@@ -672,7 +682,7 @@ namespace quda
 
   bool ColorSpinorField::are_compatible(const ColorSpinorField &a, const ColorSpinorField &b)
   {
-    return (a.Precision() == b.Precision() && a.FieldOrder() == b.FieldOrder() && are_compatible_weak(a, b));
+    return (a.Precision() == b.Precision() && a.FieldOrder() == b.FieldOrder() && a.GammaBasis() == b.GammaBasis() && are_compatible_weak(a, b));
   }
 
   void ColorSpinorField::test_compatible_weak(const ColorSpinorField &a, const ColorSpinorField &b)
@@ -691,6 +701,7 @@ namespace quda
     test_compatible_weak(a, b);
     if (a.Precision() != b.Precision()) errorQuda("precisions do not match: %d %d", a.Precision(), b.Precision());
     if (a.FieldOrder() != b.FieldOrder()) errorQuda("orders do not match: %d %d", a.FieldOrder(), b.FieldOrder());
+    if (a.GammaBasis() != b.GammaBasis()) errorQuda("basis does not match: %d %d", a.GammaBasis(), b.GammaBasis());
   }
 
   const ColorSpinorField &ColorSpinorField::Even() const
@@ -810,17 +821,22 @@ namespace quda
 
   FieldTmp<ColorSpinorField> ColorSpinorField::create_comms_batch(cvector_ref<const ColorSpinorField> &v)
   {
-    // first create a dummy ndim+1 field
-    if (v[0].Ndim() == 5) errorQuda("Cannot batch together 5-d fields");
+    // first create a dummy batched field
     ColorSpinorParam param(v[0]);
-    param.nDim++;
-    param.x[param.nDim - 1] = v.size();
+    switch (v.Ndim()) {
+    case 4:
+      param.nDim++;
+      param.x[param.nDim - 1] = v.size();
+      break;
+    case 5: param.x[param.nDim - 1] *= v.size(); break;
+    default: errorQuda("Cannot batch together %d-d fields", v.Ndim());
+    }
     param.create = QUDA_GHOST_FIELD_CREATE;
 
     // we use a custom cache key for ghost-only fields
     FieldKey<ColorSpinorField> key;
-    key.volume = v[0].VolString();
-    key.aux = v[0].AuxString();
+    key.volume = v.VolString();
+    key.aux = v.AuxString();
     char aux[32];
     strcpy(aux, ",ghost_batch=");
     u32toa(aux + 13, v.size());
@@ -840,18 +856,7 @@ namespace quda
     return ColorSpinorField(param);
   }
 
-  ColorSpinorField *ColorSpinorField::CreateAlias(const ColorSpinorParam &param_)
-  {
-    if (param_.Precision() > precision)
-      errorQuda("Cannot create an alias to source with lower precision than the alias");
-    ColorSpinorParam param(param_);
-    param.create = QUDA_REFERENCE_FIELD_CREATE;
-    param.v = data();
-
-    return new ColorSpinorField(param);
-  }
-
-  ColorSpinorField *ColorSpinorField::CreateCoarse(const int *geoBlockSize, int spinBlockSize, int Nvec,
+  ColorSpinorField ColorSpinorField::create_coarse(const int *geoBlockSize, int spinBlockSize, int Nvec,
                                                    QudaPrecision new_precision, QudaFieldLocation new_location,
                                                    QudaMemoryType new_mem_type)
   {
@@ -889,10 +894,10 @@ namespace quda
     // set where we allocate the field
     coarseParam.mem_type = new_mem_type;
 
-    return new ColorSpinorField(coarseParam);
+    return ColorSpinorField(coarseParam);
   }
 
-  ColorSpinorField *ColorSpinorField::CreateFine(const int *geoBlockSize, int spinBlockSize, int Nvec,
+  ColorSpinorField ColorSpinorField::create_fine(const int *geoBlockSize, int spinBlockSize, int Nvec,
                                                  QudaPrecision new_precision, QudaFieldLocation new_location,
                                                  QudaMemoryType new_mem_type)
   {
@@ -920,7 +925,7 @@ namespace quda
     // set where we allocate the field
     fineParam.mem_type = new_mem_type;
 
-    return new ColorSpinorField(fineParam);
+    return ColorSpinorField(fineParam);
   }
 
   // legacy CPU static ghost destructor
@@ -1006,9 +1011,10 @@ namespace quda
   }
 
   // pack the ghost zone into a contiguous buffer for communications
-  void ColorSpinorField::packGhost(const int nFace, const QudaParity parity, const int dagger, const qudaStream_t &stream,
-                                   MemoryLocation location[2 * QUDA_MAX_DIM], MemoryLocation location_label,
-                                   bool spin_project, double a, double b, double c, int shmem) const
+  void ColorSpinorField::packGhost(const int nFace, const QudaParity parity, const int dagger,
+                                   const qudaStream_t &stream, MemoryLocation location[2 * QUDA_MAX_DIM],
+                                   MemoryLocation location_label, bool spin_project, double a, double b, double c,
+                                   int shmem, cvector_ref<const ColorSpinorField> &in) const
   {
     if (Location() == QUDA_CPU_FIELD_LOCATION) errorQuda("Host field not supported");
     void *packBuffer[4 * QUDA_MAX_DIM] = {};
@@ -1044,17 +1050,19 @@ namespace quda
       }
     }
 
-    PackGhost(packBuffer, *this, location_label, nFace, dagger, parity, spin_project, a, b, c, shmem, stream);
+    cvector_ref<const ColorSpinorField> tmp(*this);
+    PackGhost(packBuffer, *this, in.size() > 0 ? in : tmp, location_label, nFace, dagger, parity, spin_project, a, b, c,
+              shmem, stream);
   }
 
   void ColorSpinorField::pack(int nFace, int parity, int dagger, const qudaStream_t &stream,
-                              MemoryLocation location[2 * QUDA_MAX_DIM], MemoryLocation location_label,
-                              bool spin_project, double a, double b, double c, int shmem) const
+                              MemoryLocation location[2 * QUDA_MAX_DIM], MemoryLocation location_label, bool spin_project,
+                              double a, double b, double c, int shmem, cvector_ref<const ColorSpinorField> &in) const
   {
     if (Location() == QUDA_CPU_FIELD_LOCATION) errorQuda("Host field not supported");
     createComms(nFace, spin_project); // must call this first
 
-    packGhost(nFace, (QudaParity)parity, dagger, stream, location, location_label, spin_project, a, b, c, shmem);
+    packGhost(nFace, (QudaParity)parity, dagger, stream, location, location_label, spin_project, a, b, c, shmem, in);
   }
 
   void ColorSpinorField::sendGhost(void *ghost_spinor, const int dim, const QudaDirection dir,
@@ -1249,7 +1257,7 @@ namespace quda
   void ColorSpinorField::exchangeGhost(QudaParity parity, int nFace, int dagger,
                                        const MemoryLocation *pack_destination_, const MemoryLocation *halo_location_,
                                        bool gdr_send, bool gdr_recv, QudaPrecision ghost_precision_, int shmem,
-                                       cvector_ref<const ColorSpinorField> v) const
+                                       cvector_ref<const ColorSpinorField> &v) const
   {
     if (Location() == QUDA_CPU_FIELD_LOCATION) {
       // allocate ghost buffer if not yet allocated
