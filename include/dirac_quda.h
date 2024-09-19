@@ -1331,13 +1331,13 @@ public:
     virtual ~DiracOverlap();
     DiracOverlap& operator=(const DiracOverlap &dirac);
 
-    virtual void Dslash(ColorSpinorField &, const ColorSpinorField &, const QudaParity ) const { errorQuda("Not implemented!\n"); }
-    virtual void DslashXpay(ColorSpinorField &, const ColorSpinorField &, const QudaParity, const ColorSpinorField &, const double &) const { errorQuda("Not implemented!\n"); }
-    virtual void M(ColorSpinorField &out, const ColorSpinorField &in) const;
-    virtual void MdagM(ColorSpinorField &out, const ColorSpinorField &in) const;
+    virtual void Dslash(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, const QudaParity ) const { errorQuda("Not implemented!\n"); }
+    virtual void DslashXpay(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, const QudaParity, cvector_ref<const ColorSpinorField> &, const double &) const { errorQuda("Not implemented!\n"); }
+    virtual void M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
+    virtual void MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
 
-    virtual void prepare(ColorSpinorField* &src, ColorSpinorField* &sol, ColorSpinorField &x, ColorSpinorField &b, const QudaSolutionType) const;
-    virtual void reconstruct(ColorSpinorField &x, const ColorSpinorField &b, const QudaSolutionType) const;
+    virtual void prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src, cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
+    virtual void reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
 
     virtual QudaDiracType getDiracType() const { return QUDA_OVERLAP_DIRAC; }
 

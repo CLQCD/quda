@@ -1,5 +1,6 @@
+#include "util_quda.h"
 #include <dirac_quda.h>
-#include <dslash_quda.h>
+// #include <dslash_quda.h>
 #include <blas_quda.h>
 #include <multigrid.h>
 #include <eigensolve_quda.h>
@@ -196,15 +197,15 @@ namespace quda
 
 #define flip(x) (x) = ((x) == QUDA_DAG_YES ? QUDA_DAG_NO : QUDA_DAG_YES)
 
-  void DiracOverlap::M(ColorSpinorField &out, const ColorSpinorField &in) const
+  void DiracOverlap::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
     printfQuda("Entering DracOverlap::M\n");
 
-    auto tmp1 = getFieldTmp(in);
-    auto tmp2 = getFieldTmp(in);
-    auto tmp3 = getFieldTmp(in);
-    auto tmp4 = getFieldTmp(in);
-    auto tmp5 = getFieldTmp(in);
+    auto tmp1 = getFieldTmp(in[0]);
+    auto tmp2 = getFieldTmp(in[0]);
+    auto tmp3 = getFieldTmp(in[0]);
+    auto tmp4 = getFieldTmp(in[0]);
+    auto tmp5 = getFieldTmp(in[0]);
     ColorSpinorField &b1 = tmp1;
     ColorSpinorField &b2 = tmp2;
     ColorSpinorField &Mb1 = tmp3;
@@ -216,19 +217,21 @@ namespace quda
     const double lambda_max = (1 + 8 * kappa);
     const double rho = 4 - 1 / (2 * kappa);
 
-    // signLow(out, deflated, hermitian_wilson_evecs, hermitian_wilson_evals, hermitian_wilson_n_eig);
+    //signLow(out, deflated, hermitian_wilson_evecs, hermitian_wilson_evals, hermitian_wilson_n_eig);
     std::vector<Complex> s(hermitian_wilson_n_eig);
-    blas::cDotProduct(s, hermitian_wilson_evecs, in);
+    blas::block::cDotProduct(s, hermitian_wilson_evecs, in[0]);
     for (int i = 0; i < hermitian_wilson_n_eig; i++) { s[i] *= -1; }
-    blas::caxpyz(s, hermitian_wilson_evecs, in, deflated);
+    blas::block::caxpyz(s, hermitian_wilson_evecs, in[0], deflated);
     for (int i = 0; i < hermitian_wilson_n_eig; i++) {
       s[i] *= -hermitian_wilson_evals[i] / abs(hermitian_wilson_evals[i]);
     }
-    out.zero();
-    blas::caxpy(s, hermitian_wilson_evecs, out);
-    gamma5(out, out);
+    out[0].zero();
+    
+    blas::block::caxpy(s, hermitian_wilson_evecs, out[0]);
+    
+    gamma5(out[0], out[0]);
 
-    // signHighPolynomial(b1, b2, Ab1, deflated, mat, remez_c, remez_n, epsilon, lambda_max);
+    //signHighPolynomial(b1, b2, Ab1, deflated, mat, remez_c, remez_n, epsilon, lambda_max);
     b1.zero();
     b2.zero();
     for (int k = remez_n; k >= 1; --k) {
@@ -240,6 +243,7 @@ namespace quda
       blas::axpbypczw(remez_c[k], deflated, 2, Ab1, -1, b2, b2);
       std::swap(b1, b2);
     }
+
     DiracWilson::M(Mb1, b1);
     flip(dagger);
     DiracWilson::M(Ab1, Mb1);
@@ -247,31 +251,32 @@ namespace quda
     blas::axpby(-(1 + epsilon) / (1 - epsilon), b1, 2 / (1 - epsilon) / (lambda_max * lambda_max), Ab1);
     blas::axpbypczw(remez_c[0], deflated, 1, Ab1, -1, b2, b2);
     DiracWilson::M(b1, b2);
-
-    blas::axpbypczw(rho, in, rho / lambda_max, b1, rho, out, out);
+    blas::axpbypczw(rho, in[0], rho / lambda_max, b1, rho, out[0], out[0]);
   }
 
-  void DiracOverlap::MdagM(ColorSpinorField &out, const ColorSpinorField &in) const
+  void DiracOverlap::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
-    checkFullSpinor(out, in);
-    auto tmp = getFieldTmp(in);
+    checkFullSpinor(out[0], in[0]);
+    auto tmp = getFieldTmp(in[0]);
 
-    M(tmp, in);
-    Mdag(out, tmp);
+    M(tmp, in[0]);
+    Mdag(out[0], tmp);
   }
 
-  void DiracOverlap::prepare(ColorSpinorField *&src, ColorSpinorField *&sol, ColorSpinorField &x, ColorSpinorField &b,
+  void DiracOverlap::prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src, cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
                              const QudaSolutionType solType) const
   {
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) {
       errorQuda("Preconditioned solution requires a preconditioned solve_type");
     }
 
-    src = &b;
-    sol = &x;
+    for (auto i = 0u; i < b.size(); i++) {
+      src[i] = const_cast<ColorSpinorField &>(b[i]).create_alias();
+      sol[i] = x[i].create_alias();
+    }
   }
 
-  void DiracOverlap::reconstruct(ColorSpinorField &, const ColorSpinorField &, const QudaSolutionType) const
+  void DiracOverlap::reconstruct(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, const QudaSolutionType) const
   {
     // do nothing
   }
@@ -284,6 +289,7 @@ namespace quda
   void DiracOverlap::setupHermitianWilson(int n_eig, const std::vector<ColorSpinorField> &evecs,
                                           const std::vector<Complex> &evals, double invsqrt_tol) const
   {
+    printfQuda("Entering DiracOverlap::setupHermitianWilson\n");
     hermitian_wilson_n_eig = n_eig;
     hermitian_wilson_evecs.resize(n_eig);
     hermitian_wilson_evals.resize(n_eig);
