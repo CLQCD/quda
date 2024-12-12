@@ -105,6 +105,11 @@ CloverField *cloverPrecondition = nullptr;
 CloverField *cloverRefinement = nullptr;
 CloverField *cloverEigensolver = nullptr;
 
+ColorSpinorField *OverlapPrecise = nullptr;
+ColorSpinorField *OverlapSloppy = nullptr;
+ColorSpinorField *OverlapPrecondition = nullptr;
+ColorSpinorField *OverlapEigensolver = nullptr;
+
 GaugeField momResident;
 GaugeField *extendedGaugeResident = nullptr;
 
@@ -2776,7 +2781,8 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   // Create the dirac operator with a sloppy and a precon.
   bool pc_solve = (inv_param->solve_type == QUDA_DIRECT_PC_SOLVE) || (inv_param->solve_type == QUDA_NORMOP_PC_SOLVE);
   createDiracWithEig(d, dSloppy, dPre, dEig, *inv_param, pc_solve);
-  Dirac &dirac = *dEig;
+  // Dirac &dirac = *dEig;
+  Dirac *dirac = dEig;
   //------------------------------------------------------
 
   // Construct vectors
@@ -2847,6 +2853,16 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   if (!eig_param->use_norm_op && !eig_param->use_dagger && eig_param->compute_gamma5) {
     m = new DiracG5M(dirac);
   } else if (!eig_param->use_norm_op && !eig_param->use_dagger && !eig_param->compute_gamma5) {
+    // Setup eigensystem for hermitian Wilson operator
+    if (inv_param->dslash_type == QUDA_OVERLAP_DSLASH) {
+      const auto &gauge = *gaugePrecise;
+      const int n_eig = inv_param->hermitian_wilson_n_ev;
+      const double invsqrt_tol = inv_param->overlap_invsqrt_tol;
+      std::vector<ColorSpinorField> evecs(n_eig);
+      std::vector<Complex> evals(n_eig);
+      setupHermitianWilson(inv_param, gauge.X(), evecs, evals);
+      ((DiracOverlap*)dirac)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
+    }
     m = new DiracM(dirac);
   } else if (!eig_param->use_norm_op && eig_param->use_dagger) {
     m = new DiracMdag(dirac);
