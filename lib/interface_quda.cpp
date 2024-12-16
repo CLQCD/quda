@@ -1843,7 +1843,8 @@ namespace quda {
     eig_param.vec_outfile[0] = 0;
     eig_param.max_restarts = 1000;
 
-    auto *eig_solve = quda::EigenSolver::create(&eig_param, *mWilson, profileEigensolve);
+    // auto *eig_solve = quda::EigenSolver::create(&eig_param, *mWilson, profileEigensolve);
+    auto *eig_solve = quda::EigenSolver::create(&eig_param, *mWilson);
     (*eig_solve)(evecs, evals);
     delete eig_solve;
 

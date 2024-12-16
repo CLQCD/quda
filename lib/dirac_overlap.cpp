@@ -158,43 +158,6 @@ namespace quda
     return *this;
   }
 
-  // Apply sign function for small eigenvalues by applying lambda_i/|lambda_i|*|V_i><V_i|
-  void signLow(ColorSpinorField &sol, ColorSpinorField &src, cvector_ref<const ColorSpinorField> &evecs,
-               const std::vector<double> &evals, int n_eig)
-  {
-    logQuda(QUDA_VERBOSE, "Deflating %d vectors\n", n_eig);
-
-    // <V_i|src> = A_i
-    std::vector<Complex> s(n_eig);
-    blas::cDotProduct(s, {evecs.begin(), evecs.begin() + n_eig}, src);
-
-    // src -= A_i|V_i>
-    for (int i = 0; i < n_eig; i++) { s[i] *= -1; }
-    blas::caxpy(s, {evecs.begin(), evecs.begin() + n_eig}, src);
-
-    // sol += lambda_i/|lambda_i|*A_i|V_i>
-    for (int i = 0; i < n_eig; i++) { s[i] *= -evals[i] / abs(evals[i]); }
-    blas::zero(sol);
-    blas::caxpy(s, {evecs.begin(), evecs.begin() + n_eig}, sol);
-  }
-
-  void signHighPolynomial(ColorSpinorField &b1, ColorSpinorField &b2, ColorSpinorField &Ab1, const ColorSpinorField &in,
-                          DiracMatrix *mat, std::vector<double> &remez_c, int remez_n, const double epsilon,
-                          const double lambda_max)
-  {
-    b1.zero();
-    b2.zero();
-    for (int k = remez_n; k >= 1; --k) {
-      (*mat)(Ab1, b1);
-      blas::axpbyz(-(1 + epsilon) / (1 - epsilon), b1, 2 / (1 - epsilon) / (lambda_max * lambda_max), Ab1, Ab1);
-      blas::axpbypczw(remez_c[k], in, 2, Ab1, -1, b2, b2);
-      std::swap(b1, b2);
-    }
-    (*mat)(Ab1, b1);
-    blas::axpbyz(-(1 + epsilon) / (1 - epsilon), b1, 2 / (1 - epsilon) / (lambda_max * lambda_max), Ab1, Ab1);
-    blas::axpbypczw(remez_c[0], in, 1, Ab1, -1, b2, b2);
-  }
-
 #define flip(x) (x) = ((x) == QUDA_DAG_YES ? QUDA_DAG_NO : QUDA_DAG_YES)
 
   void DiracOverlap::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
@@ -240,7 +203,7 @@ namespace quda
       DiracWilson::M(Ab1, Mb1);
       flip(dagger);
       blas::axpby(-(1 + epsilon) / (1 - epsilon), b1, 2 / (1 - epsilon) / (lambda_max * lambda_max), Ab1);
-      blas::axpbypczw(remez_c[k], deflated, 2, Ab1, -1, b2, b2);
+      blas::axpbypczw(remez_c[k], deflated, 2.0, Ab1, -1.0, b2, b2);
       std::swap(b1, b2);
     }
 
@@ -249,7 +212,7 @@ namespace quda
     DiracWilson::M(Ab1, Mb1);
     flip(dagger);
     blas::axpby(-(1 + epsilon) / (1 - epsilon), b1, 2 / (1 - epsilon) / (lambda_max * lambda_max), Ab1);
-    blas::axpbypczw(remez_c[0], deflated, 1, Ab1, -1, b2, b2);
+    blas::axpbypczw(remez_c[0], deflated, 1.0, Ab1, -1.0, b2, b2);
     DiracWilson::M(b1, b2);
     blas::axpbypczw(rho, in[0], rho / lambda_max, b1, rho, out[0], out[0]);
   }
