@@ -2844,6 +2844,18 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
                 eig_param->use_dagger ? "true" : "false", eig_param->use_norm_op ? "true" : "false");
     }
   }
+
+  // pre-setttings for the overlap operator
+  if (inv_param->dslash_type == QUDA_OVERLAP_DSLASH) {
+    const auto &gauge = *gaugePrecise;
+    const int n_eig = inv_param->hermitian_wilson_n_ev;
+    const double invsqrt_tol = inv_param->overlap_invsqrt_tol;
+    std::vector<ColorSpinorField> evecs(n_eig);
+    std::vector<Complex> evals(n_eig);
+    setupHermitianWilson(inv_param, gauge.X(), evecs, evals);
+    ((DiracOverlap*)dirac)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
+  }
+
   //------------------------------------------------------
   // We must construct the correct Dirac operator type based on the three
   // options: The normal operator, the daggered operator, and if we pre
@@ -2853,16 +2865,6 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   if (!eig_param->use_norm_op && !eig_param->use_dagger && eig_param->compute_gamma5) {
     m = new DiracG5M(dirac);
   } else if (!eig_param->use_norm_op && !eig_param->use_dagger && !eig_param->compute_gamma5) {
-    // Setup eigensystem for hermitian Wilson operator
-    if (inv_param->dslash_type == QUDA_OVERLAP_DSLASH) {
-      const auto &gauge = *gaugePrecise;
-      const int n_eig = inv_param->hermitian_wilson_n_ev;
-      const double invsqrt_tol = inv_param->overlap_invsqrt_tol;
-      std::vector<ColorSpinorField> evecs(n_eig);
-      std::vector<Complex> evals(n_eig);
-      setupHermitianWilson(inv_param, gauge.X(), evecs, evals);
-      ((DiracOverlap*)dirac)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-    }
     m = new DiracM(dirac);
   } else if (!eig_param->use_norm_op && eig_param->use_dagger) {
     m = new DiracMdag(dirac);
