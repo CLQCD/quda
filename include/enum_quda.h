@@ -640,6 +640,12 @@ typedef enum QudaExtLibType_s {
   QUDA_EXTLIB_INVALID = QUDA_INVALID_ENUM
 } QudaExtLibType;
 
+typedef enum QudaChirality_s {
+  QUDA_CHIRALITY_UPPER,
+  QUDA_CHIRALITY_LOWER,
+  QUDA_CHIRALITY_INVALID = QUDA_INVALID_ENUM
+} QudaChirality;
+
 #ifdef __cplusplus
 }
 #endif
