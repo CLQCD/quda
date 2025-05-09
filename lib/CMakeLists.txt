@@ -301,8 +301,13 @@ if(NOT DEFINED QUDA_MAX_MULTI_RHS)
 endif()
 
 # make one library
-target_sources(quda PRIVATE $<TARGET_OBJECTS:quda_cpp> $<$<TARGET_EXISTS:quda_pack>:$<TARGET_OBJECTS:quda_pack>>
-                            ${QUDA_CU_OBJS})
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  target_sources(quda PRIVATE $<TARGET_OBJECTS:quda_cpp> $<$<TARGET_EXISTS:quda_pack>:$<TARGET_OBJECTS:quda_pack>>
+                              ${QUDA_CU_OBJS} quda.def)
+else()
+  target_sources(quda PRIVATE $<TARGET_OBJECTS:quda_cpp> $<$<TARGET_EXISTS:quda_pack>:$<TARGET_OBJECTS:quda_pack>>
+                              ${QUDA_CU_OBJS})
+endif()
 
 # for a develop build reduce the size by compressing the debug information
 include(CheckLinkerFlag)
