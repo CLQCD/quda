@@ -28,14 +28,11 @@ typedef struct {
   double real, imag;
 } _Dcomplex;
 #endif
-#define API __declspec(dllexport)
 #define double_complex _Dcomplex
 #else
-#define API
 #define double_complex double _Complex
 #endif
 #else // keep NVRTC happy since it can't handle C types
-#define API
 #define double_complex double2
 #endif
 
@@ -949,7 +946,7 @@ extern "C" {
    *                   returned by fopen()) where messages should be
    *                   printed.  The default is stdout.
    */
-  API void setVerbosityQuda(QudaVerbosity verbosity, const char prefix[],
+  void setVerbosityQuda(QudaVerbosity verbosity, const char prefix[],
                         FILE *outfile);
 
   /**
