@@ -123,7 +123,7 @@ namespace quda
 
   struct ColorSpinorParam : public LatticeFieldParam {
     int nColor = 0; // Number of colors of the field
-    int nSpin = 0;  // =1 for staggered, =2 for coarse Dslash, =4 for 4d spinor
+    int nSpin = 0;  // =1 for staggered, =2 for coarse Dslash and chiral overlap operator, =4 for 4d spinor
     int nVec = 1;   // number of packed vectors (for multigrid transfer operator)
 
     QudaTwistFlavorType twistFlavor = QUDA_TWIST_INVALID; // used by twisted mass
@@ -1023,6 +1023,22 @@ namespace quda
      @param[in] t0 The parameter for distance preconditioning
   */
   void spinorDistanceReweight(ColorSpinorField &src, double alpha0, int t0);
+
+  /**
+     @brief Embed a chiral spinor into a full spinor
+     @param[out] dst The colorspinorfield nSpin = 4
+     @param[in] src The colorspinorfield nSpin = 2
+     @param[in] chirality The parameter for chiral embedding
+  */
+  void spinorChiralEmbed(ColorSpinorField &dst, const ColorSpinorField &src, QudaChirality chirality);
+
+  /**
+     @brief Project a chiral spinor from a full spinor
+     @param[out] dst The colorspinorfield nSpin = 2
+     @param[in] src The colorspinorfield nSpin = 4
+     @param[in] chirality The parameter for chiral projection
+  */
+  void spinorChiralProject(ColorSpinorField &dst, const ColorSpinorField &src, QudaChirality chirality);
 
   /**
      @brief Helper function for determining if the preconditioning

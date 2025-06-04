@@ -257,6 +257,8 @@ namespace quda
   void EigenSolver::chebyOp(cvector_ref<ColorSpinorField> &out,
                             cvector_ref<const ColorSpinorField> &in)
   {
+    // printfQuda("===============Entering EigenSolver::chebyOp===============\n");
+
     // Just do a simple mat-vec if no poly acc is requested
     if (!eig_param->use_poly_acc) {
       mat(out, in);
@@ -307,6 +309,24 @@ namespace quda
       // FIXME - we could introduce a fused mat + blas kernel here, eliminating one temporary
       // mat*C_{m}(x)
       mat(out, tmp2);
+
+      // 使用auto接收范数向量，检查每个元素
+      auto norm2_out_vec = blas::norm2(out);
+      bool has_nan = false;
+      
+      // 检查向量中的每个元素是否有NaN
+      for (size_t j = 0; j < norm2_out_vec.size(); j++) {
+        if (std::isnan(norm2_out_vec[j])) {
+          printfQuda("NaN detected in norm2_out[%zu] = %.15e at iteration %d\n", j, norm2_out_vec[j], i);
+          has_nan = true;
+        }
+      }
+      
+      // 如果全部向量的范数都需要检查（可选）
+      if (has_nan) {
+        printfQuda("检测到NaN，打印其他相关信息：\n");
+        printfQuda("当前参数: sigma=%.15e, d1=%.15e, d2=%.15e, d3=%.15e\n", sigma, d1, d2, d3);
+      }
 
       blas::axpbypczw(d3, tmp1, d2, tmp2, d1, out, tmp1);
       std::swap(tmp1, tmp2);
@@ -583,6 +603,10 @@ namespace quda
     ColorSpinorParam csParamClone(evecs[0]);
     csParamClone.create = QUDA_NULL_FIELD_CREATE;
     ColorSpinorField temp(csParamClone);
+
+    // 打印csParamClone的基本信息
+    // printfQuda("===============csParamClone info:===============\n");
+    // csParamClone.print();
 
     for (int i = 0; i < size; i++) {
       // r = A * v_i

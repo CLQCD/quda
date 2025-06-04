@@ -454,6 +454,12 @@ extern "C" {
     int hermitian_wilson_n_kr;
     double hermitian_wilson_tol;
     double overlap_invsqrt_tol;
+    /**  Parameters for Overlap propagator*/
+    int ov_n_ev;
+    void *ov_eigvals;
+    void **ov_eigvecs;
+    void *ov_masses;
+
     /**
      * Parameters for distance preconditioning algorithm proposed in arXiv:1006.4028,
      * which is useful to solve a precise heavy quark propagator.

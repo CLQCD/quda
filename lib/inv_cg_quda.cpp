@@ -208,6 +208,7 @@ namespace quda {
 
   void CG::operator()(ColorSpinorField &x, ColorSpinorField &b, ColorSpinorField *p_init, double r2_old_init)
   {
+    printfQuda("Entering CG::operator()\n");
     if (param.is_preconditioner) commGlobalReductionPush(param.global_reduction);
 
     if (param.maxiter == 0 || param.Nsteps == 0) {
@@ -524,7 +525,11 @@ namespace quda {
       // compute the true residuals
       mat(r, x);
       param.true_res = sqrt(blas::xmyNorm(b, r) / b2);
-      param.true_res_hq = sqrt(blas::HeavyQuarkResidualNorm(x, r).z);
+      if (x.Nspin() == 4) { // 只在nSpin=4时计算重夸克残差
+        param.true_res_hq = sqrt(blas::HeavyQuarkResidualNorm(x, r).z);
+      } else {
+        param.true_res_hq = 0.0;
+      }
     }
 
     PrintSummary("CG", k, r2, b2, stop, 0.0);

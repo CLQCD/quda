@@ -65,6 +65,8 @@ namespace quda
       getCoords(x, x_cb, arg.X, parity);
       VectorOut out;
       VectorIn in = arg.in(x_cb, parity);
+      typename Arg::Basis basis;
+      basis(out.data, in.data);
       arg.out(x_cb, parity) = out;
     }
   };
@@ -82,6 +84,8 @@ namespace quda
       getCoords(x, x_cb, arg.X, parity);
       VectorOut out;
       VectorIn in = arg.in(x_cb, parity);
+      typename Arg::Basis basis;
+      basis(out.data, in.data);
       arg.out(x_cb, parity) = out;
     }
   };

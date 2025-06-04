@@ -64,6 +64,23 @@ namespace quda
     }
   };
 
+  /** Embed from relativistic Degrand-Rossi into non-relativistic UKQCD basis */
+  template <int Ns, int Nc, QudaChirality Chirality, bool Project> struct NonRelBasisEmbed {
+    template <typename FloatOut, typename FloatIn>
+    __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[2 * Nc]) const
+    {
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr int offset = upper ? 0 : Ns / 2;
+      int s1[4] = {1, 0, 1, 0};
+      FloatOut K1[4] = {static_cast<FloatOut>(kP), static_cast<FloatOut>(-kP),
+                        upper ? static_cast<FloatOut>(kP) : static_cast<FloatOut>(-kP),
+                        upper ? static_cast<FloatOut>(-kP) : static_cast<FloatOut>(kP)};
+      for (int s = 0; s < Ns; s++) {
+        for (int c = 0; c < Nc; c++) { out[s * Nc + c] = K1[s] * static_cast<complex<FloatOut>>(in[s1[s] * Nc + c]); }
+      }
+    }
+  };
+
   /** Transform from non-relativistic UKQCD into relativistic Degrand-Rossi basis */
   template <int Ns, int Nc, QudaChirality Chirality, bool Project> struct RelBasis {
     template <typename FloatOut, typename FloatIn>
@@ -82,6 +99,7 @@ namespace quda
           for (int c = 0; c < Nc; c++) {
             out[s * Nc + c] = K1[offset + s] * static_cast<complex<FloatOut>>(in[s1[offset + s] * Nc + c])
               + K2[offset + s] * static_cast<complex<FloatOut>>(in[s2[offset + s] * Nc + c]);
+            // out[s * Nc + c] = static_cast<FloatOut>(3) * static_cast<complex<FloatOut>>(out[s * Nc + c]);
           }
         }
       } else {
@@ -93,6 +111,30 @@ namespace quda
           for (int c = 0; c < Nc; c++) { out[s * Nc + c] = K1[s] * static_cast<complex<FloatOut>>(in[s1[s] * Nc + c]); }
         }
       }
+    }
+  };
+
+  /** Projection from non-relativistic UKQCD into relativistic Degrand-Rossi basis */
+  template <int Ns, int Nc, QudaChirality Chirality, bool Project> struct RelBasisProj {
+    template <typename FloatOut, typename FloatIn>
+    __device__ __host__ inline void operator()(complex<FloatOut> out[2 * Nc], const complex<FloatIn> in[Ns * Nc]) const
+    {
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr int offset = upper ? 0 : Ns / 2;
+      if constexpr (Project) {
+        int s1[4] = {1, 2, 3, 0};
+        int s2[4] = {3, 0, 1, 2};
+        FloatOut K1[4] = {static_cast<FloatOut>(-kU), static_cast<FloatOut>(kU), static_cast<FloatOut>(kU),
+                          static_cast<FloatOut>(kU)};
+        FloatOut K2[4] = {static_cast<FloatOut>(-kU), static_cast<FloatOut>(kU), static_cast<FloatOut>(-kU),
+                          static_cast<FloatOut>(-kU)};
+        for (int s = 0; s < Ns / 2; s++) {
+          for (int c = 0; c < Nc; c++) {
+            out[s * Nc + c] = K1[offset + s] * static_cast<complex<FloatOut>>(in[s1[offset + s] * Nc + c])
+              + K2[offset + s] * static_cast<complex<FloatOut>>(in[s2[offset + s] * Nc + c]);
+          }
+        }
+      } 
     }
   };
 

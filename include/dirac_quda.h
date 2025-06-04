@@ -1316,7 +1316,7 @@ public:
   class DiracOverlap : public DiracWilson {
 
   protected:
-    double mass_overlap;
+    mutable double mass_overlap;
     DiracWilson *wilson;
     mutable int hermitian_wilson_n_eig;
     mutable std::vector<ColorSpinorField> hermitian_wilson_evecs;
@@ -1324,6 +1324,8 @@ public:
     mutable double remez_tol;
     mutable int remez_n;
     mutable std::vector<double> remez_c;
+    mutable double zero_shift;
+    mutable bool M_mass;
 
   public:
     DiracOverlap(const DiracParam &param);
@@ -1335,6 +1337,8 @@ public:
     virtual void DslashXpay(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, const QudaParity, cvector_ref<const ColorSpinorField> &, const double &) const { errorQuda("Not implemented!\n"); }
     virtual void M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
     virtual void MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
+    virtual void Mdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
+    virtual void MMdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
 
     virtual void prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src, cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
     virtual void reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
@@ -1351,6 +1355,66 @@ public:
     virtual void prefetch(QudaFieldLocation mem_space, qudaStream_t stream = device::get_default_stream()) const;
 
     void setupHermitianWilson(int n_eig, const std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals, double invsqrt_tol) const;
+
+    // set zero_shift
+    void setZeroShift(double zero_shift) const { this->zero_shift = zero_shift; };
+
+    // set mass_overlap
+    void setMassOverlap(double mass_overlap) const { this->mass_overlap = mass_overlap; };
+
+    // set M_mass
+    void setMMass(bool M_mass) const { this->M_mass = M_mass; }
+  };
+
+  // chiral overlap : nSpin=2, gamma_basis=QUDA_DEGRAND_ROSSI_GAMMA_BASIS/QUDA_CHIRAL_GAMMA_BASIS
+  class DiracChiralOverlap : public Dirac {
+
+  protected:
+    mutable QudaChirality chirality;
+    mutable DiracOverlap *overlap;
+    mutable double zero_shift;
+
+  public:
+    DiracChiralOverlap(const DiracParam &param);
+    DiracChiralOverlap(const DiracChiralOverlap &dirac);
+    virtual ~DiracChiralOverlap();
+    DiracChiralOverlap& operator=(const DiracChiralOverlap &dirac);
+
+    virtual void Dslash(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                        QudaParity parity) const;
+
+    virtual void DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                            QudaParity parity, cvector_ref<const ColorSpinorField> &x, double k) const;
+
+    virtual void M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
+
+    virtual void MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
+
+    virtual void Mdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
+
+    virtual void prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src, cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
+    
+    virtual void reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
+
+    virtual QudaDiracType getDiracType() const { return QUDA_CHIRAL_OVERLAP_DIRAC; }
+
+    /**
+      @brief If managed memory and prefetch is enabled, prefetch
+      all relevant memory fields (gauge, clover, temporary spinors)
+      to the CPU or GPU as requested
+      @param[in] mem_space Memory space we are prefetching to
+      @param[in] stream Which stream to run the prefetch in (default 0)
+    */
+    virtual void prefetch(QudaFieldLocation mem_space, qudaStream_t stream = device::get_default_stream()) const;
+
+    // set the full spinor overlap operator
+    void setOverlap(DiracOverlap *dirac_ov);
+
+    // set chirality
+    void setChirality(QudaChirality chirality) const { this->chirality = chirality; }
+
+    // set zero_shift
+    void setZeroShift(double zero_shift) const { this->zero_shift = zero_shift; }
   };
 
   // Full staggered
