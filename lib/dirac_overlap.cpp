@@ -184,7 +184,7 @@ namespace quda
     const double lambda_max = (1 + 8 * kappa);
     const double rho = 4 - 1 / (2 * kappa);
 
-    //signLow(out, deflated, hermitian_wilson_evecs, hermitian_wilson_evals, hermitian_wilson_n_eig);
+    // signLow(out, deflated, hermitian_wilson_evecs, hermitian_wilson_evals, hermitian_wilson_n_eig);
     std::vector<Complex> s(hermitian_wilson_n_eig);
     blas::block::cDotProduct(s, hermitian_wilson_evecs, in);
     for (int i = 0; i < hermitian_wilson_n_eig; i++) { s[i] *= -1; }
@@ -192,15 +192,13 @@ namespace quda
     for (int i = 0; i < hermitian_wilson_n_eig; i++) {
       s[i] *= -hermitian_wilson_evals[i] / abs(hermitian_wilson_evals[i]);
     }
-    for (auto &field : out) {
-      field.get().zero();
-    }
-    
+    for (auto &field : out) { field.get().zero(); }
+
     blas::block::caxpy(s, hermitian_wilson_evecs, out);
-    
+
     gamma5(out, out);
 
-    //signHighPolynomial(b1, b2, Ab1, deflated, mat, remez_c, remez_n, epsilon, lambda_max);
+    // signHighPolynomial(b1, b2, Ab1, deflated, mat, remez_c, remez_n, epsilon, lambda_max);
     b1.zero();
     b2.zero();
     for (int k = remez_n; k >= 1; --k) {
@@ -222,7 +220,7 @@ namespace quda
     DiracWilson::M(b1, b2);
     blas::axpbypczw(rho, in, rho / lambda_max, b1, rho, out, out);
 
-    if(M_mass){
+    if (M_mass) {
       // out = ((1 - m / (2 * \rho)) * D_{ov} + m) * in
       printfQuda("=====M_mass=====\n");
       double alpha = 1.0 - (mass_overlap / (2.0 * rho));
@@ -230,7 +228,7 @@ namespace quda
       blas::axpbyz(alpha, out, beta, in, out);
     }
 
-    if(zero_shift != 0.0){
+    if (zero_shift != 0.0) {
       printfQuda("=====zero_shift overlap=====\n");
       blas::axpby(zero_shift, in, 1.0, out);
     }
@@ -279,7 +277,8 @@ namespace quda
   //   gamma5(out, tmp_2);
   // }
 
-  void DiracOverlap::prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src, cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
+  void DiracOverlap::prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src,
+                             cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
                              const QudaSolutionType solType) const
   {
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) {
@@ -292,7 +291,8 @@ namespace quda
     }
   }
 
-  void DiracOverlap::reconstruct(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, const QudaSolutionType) const
+  void DiracOverlap::reconstruct(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &,
+                                 const QudaSolutionType) const
   {
     // do nothing
     printfQuda("DiracOverlap::reconstruct not implemented!\n");

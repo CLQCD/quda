@@ -63,7 +63,6 @@ namespace quda {
   void CG::operator()(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
                       cvector_ref<const ColorSpinorField> &p_init, cvector<double> &r2_old_init)
   {
-    printfQuda("Entering CG::operator()\n");
     if (param.is_preconditioner) commGlobalReductionPush(param.global_reduction);
 
     if (param.maxiter == 0 || param.Nsteps == 0) {

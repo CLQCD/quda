@@ -263,8 +263,6 @@ namespace quda
   void EigenSolver::chebyOp(cvector_ref<ColorSpinorField> &out,
                             cvector_ref<const ColorSpinorField> &in)
   {
-    // printfQuda("===============Entering EigenSolver::chebyOp===============\n");
-
     // Just do a simple mat-vec if no poly acc is requested
     if (!eig_param->use_poly_acc) {
       mat(out, in);

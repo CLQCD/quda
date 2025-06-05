@@ -18,13 +18,13 @@ namespace quda
   {
   }
 
-  DiracChiralOverlap::~DiracChiralOverlap() 
-  { 
-    if (overlap) delete overlap; 
+  DiracChiralOverlap::~DiracChiralOverlap()
+  {
+    if (overlap) delete overlap;
     overlap = nullptr;
   }
 
-  DiracChiralOverlap& DiracChiralOverlap::operator=(const DiracChiralOverlap &dirac)
+  DiracChiralOverlap &DiracChiralOverlap::operator=(const DiracChiralOverlap &dirac)
   {
     if (&dirac != this) {
       Dirac::operator=(dirac);
@@ -43,16 +43,16 @@ namespace quda
 
 #define flip(x) (x) = ((x) == QUDA_DAG_YES ? QUDA_DAG_NO : QUDA_DAG_YES)
 
-  void DiracChiralOverlap::Dslash(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, 
-                                  QudaParity parity) const 
-  { 
-    errorQuda("DiracChiralOverlap::Dslash not implemented!\n"); 
+  void DiracChiralOverlap::Dslash(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                                  QudaParity parity) const
+  {
+    errorQuda("DiracChiralOverlap::Dslash not implemented!\n");
   }
 
-  void DiracChiralOverlap::DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, 
-                                      QudaParity parity, cvector_ref<const ColorSpinorField> &x, double scale) const 
-  { 
-    errorQuda("DiracChiralOverlap::DslashXpay not implemented!\n"); 
+  void DiracChiralOverlap::DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                                      QudaParity parity, cvector_ref<const ColorSpinorField> &x, double scale) const
+  {
+    errorQuda("DiracChiralOverlap::DslashXpay not implemented!\n");
   }
 
   void DiracChiralOverlap::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
@@ -84,11 +84,11 @@ namespace quda
 
     // out_full(nSpin = 4) -> out(nSpin = 2)
     spinorChiralProject(out[0], out_full, chirality);
-    
+
     const double rho = 4.0 - 1.0 / (2.0 * (kappa));
     blas::ax((2 * rho), out);
 
-    if(zero_shift != 0.0){
+    if (zero_shift != 0.0) {
       printfQuda("=====zero_shift chiral_overlap=====\n");
       blas::axpby(zero_shift, in, 1.0, out);
     }
@@ -97,15 +97,16 @@ namespace quda
   void DiracChiralOverlap::Mdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
     printfQuda("Entering DiracChiralOverlap::Mdag\n");
-    if(overlap){
+    if (overlap) {
       overlap->Mdag(out, in);
-    }else{
+    } else {
       errorQuda("DiracChiralOverlap::Mdag: overlap pointer is null");
     }
   }
 
-  void DiracChiralOverlap::prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src, cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
-                             const QudaSolutionType solType) const
+  void DiracChiralOverlap::prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src,
+                                   cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
+                                   const QudaSolutionType solType) const
   {
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) {
       errorQuda("Preconditioned solution requires a preconditioned solve_type");
@@ -117,7 +118,8 @@ namespace quda
     }
   }
 
-  void DiracChiralOverlap::reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const
+  void DiracChiralOverlap::reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
+                                       const QudaSolutionType) const
   {
     // do nothing
     printfQuda("DiracChiralOverlap::reconstruct not implemented!\n");
@@ -126,7 +128,7 @@ namespace quda
   void DiracChiralOverlap::prefetch(QudaFieldLocation mem_space, qudaStream_t stream) const
   {
     Dirac::prefetch(mem_space, stream);
-    
+
     if (overlap) overlap->prefetch(mem_space, stream);
   }
 

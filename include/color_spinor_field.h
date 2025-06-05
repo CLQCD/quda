@@ -123,7 +123,7 @@ namespace quda
 
   struct ColorSpinorParam : public LatticeFieldParam {
     int nColor = 0; // Number of colors of the field
-    int nSpin = 0;  // =1 for staggered, =2 for coarse Dslash and chiral overlap operator, =4 for 4d spinor
+    int nSpin = 0;  // =1 for staggered, =2 for coarse Dslash and chiral overlap Dslash, =4 for 4d spinor
     int nVec = 1;   // number of packed vectors (for multigrid transfer operator)
     int nVec_actual = 1; // The actual number of packed vectors (that are not zero padded)
 

@@ -45,7 +45,6 @@ namespace quda
   //---------------------------------------------------------------------------
   void IRAM::arnoldiStep(std::vector<ColorSpinorField> &v, std::vector<ColorSpinorField> &r, double &beta, int j)
   {
-    // printfQuda("===============Entering IRAM::arnoldiStep===============\n");
     beta = sqrt(blas::norm2(r[0]));
     if (j > 0) upperHess[j][j - 1] = beta;
 
@@ -116,9 +115,6 @@ namespace quda
     }
 
     if (orth_iter == orth_iter_max) { errorQuda("Unable to orthonormalise r"); }
-
-    // double norm_r0 = blas::norm2(r[0]);
-    // printfQuda("norm_r0[%d] = %.16e\n", j, norm_r0);
   }
 
   void IRAM::rotateBasis(std::vector<ColorSpinorField> &kSpace, int keep)
@@ -426,7 +422,6 @@ namespace quda
 
   void IRAM::operator()(std::vector<ColorSpinorField> &kSpace, std::vector<Complex> &evals)
   {
-    // printfQuda("===============Entering IRAM::operator()===============\n");
     // Override any user input for block size.
     block_size = 1;
 

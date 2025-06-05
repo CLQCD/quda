@@ -29,11 +29,10 @@ namespace quda
       } else if (out.GammaBasis() == QUDA_UKQCD_GAMMA_BASIS && in.GammaBasis() == QUDA_DEGRAND_ROSSI_GAMMA_BASIS) {
         // printf("Launching ChiralEmbedSpinor with NonRelBasis\n");
         launch<ChiralEmbedSpinor>(tp, stream, Arg<NonRelBasis>(out, in));
-      } else if (out.GammaBasis() == in.GammaBasis()){
+      } else if (out.GammaBasis() == in.GammaBasis()) {
         // printf("Launching ChiralEmbedSpinor with PreserveBasis, GammaBasis is: %d\n", out.GammaBasis());
         launch<ChiralEmbedSpinor>(tp, stream, Arg<PreserveBasis>(out, in));
-      }
-       else {
+      } else {
         errorQuda("Unsupported combination of dst gamma basis %d and src gamma basis %d", out.GammaBasis(),
                   in.GammaBasis());
       }
@@ -100,7 +99,7 @@ namespace quda
       } else if (out.GammaBasis() == in.GammaBasis()) {
         // printfQuda("Launching ChiralProjectSpinor with PreserveBasis, GammaBasis is: %d\n", out.GammaBasis());
         launch<ChiralProjectSpinor>(tp, stream, Arg<PreserveBasis>(out, in));
-      }else {
+      } else {
         errorQuda("Unsupported combination of dst gamma basis %d and src gamma basis %d", out.GammaBasis(),
                   in.GammaBasis());
       }

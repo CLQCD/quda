@@ -22,8 +22,7 @@
 
 #include <worker.h>
 
-namespace quda
-{
+namespace quda {
 
   /**
      This worker class is used to update the shifted p and x vectors.
@@ -47,8 +46,7 @@ namespace quda
      need to be addressed in the future as the Worker idea to applied
      elsewhere.
    */
-  class ShiftUpdate : public Worker
-  {
+  class ShiftUpdate : public Worker {
 
     ColorSpinorField &r;
     std::vector<ColorSpinorField> &p;
@@ -113,9 +111,8 @@ namespace quda
   };
 
   // this is the Worker pointer that the dslash uses to launch the shifted updates
-  namespace dslash
-  {
-    extern Worker *aux_worker;
+  namespace dslash {
+    extern Worker* aux_worker;
   }
 
   MultiShiftCG::MultiShiftCG(const DiracMatrix &mat, const DiracMatrix &matSloppy, SolverParam &param) :
@@ -178,16 +175,15 @@ namespace quda
 
     alpha[0] = r2[0] / pAp;
     zeta[0] = 1.0;
-    for (int j = 1; j < nShift; j++) {
+    for (int j=1; j<nShift; j++) {
       double c0 = zeta[j] * zeta_old[j] * alpha_old[j_low];
-      double c1 = alpha[j_low] * beta[j_low] * (zeta_old[j] - zeta[j]);
+      double c1 = alpha[j_low] * beta[j_low] * (zeta_old[j]-zeta[j]);
       double c2 = zeta_old[j] * alpha_old[j_low] * (1.0 + (offset[j] - offset[0]) * alpha[j_low]);
 
       zeta_old[j] = zeta[j];
       zeta[j] = (c1 + c2 != 0.0) ? c0 / (c1 + c2) : 0.0;
       alpha[j] = (zeta[j] != 0.0) ? alpha[j_low] * zeta[j] / zeta_old[j] : 0.0;
 
-      // 添加调试输出
       if (j <= 2) { // 只打印前几个位移避免输出过多
         logQuda(QUDA_VERBOSE, "Shift %d: c0=%e, c1=%e, c2=%e, zeta_old=%e, zeta=%e, alpha=%e\n", 
                 j, c0, c1, c2, zeta_old[j], zeta[j], alpha[j]);
@@ -222,15 +218,14 @@ namespace quda
     bool zero_refinement = param.precision_refinement_sloppy != param.precision;
 
     // this is the limit of precision possible
-    const double sloppy_tol = param.precision_sloppy == 8 ?
-      std::numeric_limits<double>::epsilon() :
-      ((param.precision_sloppy == 4) ? std::numeric_limits<float>::epsilon() : pow(2., -17));
-    const double fine_tol = pow(10., (-2 * (int)b.Precision() + 1));
+    const double sloppy_tol= param.precision_sloppy == 8 ? std::numeric_limits<double>::epsilon() :
+      ((param.precision_sloppy == 4) ? std::numeric_limits<float>::epsilon() : pow(2.,-17));
+    const double fine_tol = pow(10.,(-2*(int)b.Precision()+1));
     std::vector<double> prec_tol(num_offset);
 
     prec_tol[0] = mixed ? sloppy_tol : fine_tol;
-    for (int i = 1; i < num_offset; i++) {
-      prec_tol[i] = std::min(sloppy_tol, std::max(fine_tol, sqrt(param.tol_offset[i] * sloppy_tol)));
+    for (int i=1; i<num_offset; i++) {
+      prec_tol[i] = std::min(sloppy_tol,std::max(fine_tol,sqrt(param.tol_offset[i]*sloppy_tol)));
     }
 
     std::vector<double> zeta(num_offset, 1.0);
@@ -264,7 +259,7 @@ namespace quda
     // this parameter determines how many consective reliable update
     // reisudal increases we tolerate before terminating the solver,
     // i.e., how long do we want to keep trying to converge
-    const int maxResIncrease = param.max_res_increase; // check if we reached the limit of our tolerance
+    const int maxResIncrease =  param.max_res_increase; // check if we reached the limit of our tolerance
     const int maxResIncreaseTotal = param.max_res_increase_total;
 
     int resIncrease = 0;
@@ -282,9 +277,7 @@ namespace quda
 
     logQuda(QUDA_VERBOSE, "%d iterations, <r,r> = %e, |r|/|b| = %e\n", k, r2[0], sqrt(r2[0] / b2));
 
-    // printfQuda("r.nSpin() = %d\n", r.Nspin());
-
-    while (!convergence(r2, stop, num_offset_now) && !exit_early && k < param.maxiter) {
+    while ( !convergence(r2, stop, num_offset_now) &&  !exit_early && k < param.maxiter) {
 
       if (aux_update) dslash::aux_worker = &shift_update;
       matSloppy(Ap, p[0]);
@@ -302,7 +295,7 @@ namespace quda
         pAp = blas::reDotProduct(p[0], Ap);
 
       // compute zeta and alpha
-      for (int j = 1; j < num_offset_now; j++) r2_old_array[j] = zeta[j] * zeta[j] * r2[0];
+      for (int j=1; j<num_offset_now; j++) r2_old_array[j] = zeta[j] * zeta[j] * r2[0];
       updateAlphaZeta(alpha, zeta, zeta_old, r2, beta, pAp, offset, num_offset_now, j_low);
 
       if (k % 10 == 0 || k < 5) {
@@ -322,29 +315,28 @@ namespace quda
 
       // reliable update conditions
       rNorm[0] = sqrt(r2[0]);
-      for (int j = 1; j < num_offset_now; j++) rNorm[j] = rNorm[0] * zeta[j];
+      for (int j=1; j<num_offset_now; j++) rNorm[j] = rNorm[0] * zeta[j];
 
-      int updateX = 0, updateR = 0;
-      // fixme: with the current implementation of the reliable update it is sufficient to trigger it only for shift 0
-      // fixme: The loop below is unnecessary but I don't want to delete it as we still might find a better reliable update
+      int updateX=0, updateR=0;
+      //fixme: with the current implementation of the reliable update it is sufficient to trigger it only for shift 0
+      //fixme: The loop below is unnecessary but I don't want to delete it as we still might find a better reliable update
       int reliable_shift = -1; // this is the shift that sets the reliable_shift
-      for (int j = 0; j >= 0; j--) {
+      for (int j=0; j>=0; j--) {
         if (rNorm[j] > maxrx[j]) maxrx[j] = rNorm[j];
         if (rNorm[j] > maxrr[j]) maxrr[j] = rNorm[j];
-        updateX = (rNorm[j] < delta * r0Norm[j] && r0Norm[j] <= maxrx[j]) ? 1 : updateX;
-        updateR = ((rNorm[j] < delta * maxrr[j] && r0Norm[j] <= maxrr[j]) || updateX) ? 1 : updateR;
+        updateX = (rNorm[j] < delta*r0Norm[j] && r0Norm[j] <= maxrx[j]) ? 1 : updateX;
+        updateR = ((rNorm[j] < delta*maxrr[j] && r0Norm[j] <= maxrr[j]) || updateX) ? 1 : updateR;
         if ((updateX || updateR) && reliable_shift == -1) reliable_shift = j;
       }
 
-      // printfQuda("=============updateX = %d, updateR = %d, reliable = %d\n=============", updateX, updateR, reliable);
-      if (!(updateR || updateX) || !reliable) {
+      if ( !(updateR || updateX) || !reliable) {
         // beta[0] = r2[0] / r2_old;
         beta[0] = zn / r2_old;
-        // update p[0] and x[0]
+	// update p[0] and x[0]
         blas::axpyZpbx(alpha[0], p[0], x_sloppy[0], r_sloppy, beta[0]);
 
         // this should trigger the shift update in the subsequent sloppy dslash
-        aux_update = true;
+	aux_update = true;
         /*
           for (int j=1; j<num_offset_now; j++) {
           beta[j] = beta[j_low] * zeta[j] * alpha[j] / (zeta_old[j] * alpha[j_low]);
@@ -353,7 +345,7 @@ namespace quda
           }
         */
       } else {
-        for (int j = 0; j < num_offset_now; j++) {
+	for (int j=0; j<num_offset_now; j++) {
           blas::axpy(alpha[j], p[j], x_sloppy[j]);
           if (group_update) {
             if (rUpdate == 0)
@@ -365,7 +357,6 @@ namespace quda
 
         mat(r, x[0]);
         if (r.Nspin() == 4 || r.Nspin() == 2) blas::axpy(offset[0], x[0], r);
-        // blas::axpy(offset[0], x[0], r);
 
         r2[0] = blas::xmyNorm(b, r);
         for (int j = 1; j < num_offset_now; j++) r2[j] = zeta[j] * zeta[j] * r2[0];
@@ -375,9 +366,9 @@ namespace quda
         blas::copy(r_sloppy, r);
 
         // break-out check if we have reached the limit of the precision
-        if (sqrt(r2[reliable_shift]) > r0Norm[reliable_shift]) { // reuse r0Norm for this
-          resIncrease++;
-          resIncreaseTotal[reliable_shift]++;
+	if (sqrt(r2[reliable_shift]) > r0Norm[reliable_shift]) { // reuse r0Norm for this
+	  resIncrease++;
+	  resIncreaseTotal[reliable_shift]++;
           warningQuda("Shift %d, updated residual %e is greater than previous residual %e (total #inc %i)",
                       reliable_shift, sqrt(r2[reliable_shift]), r0Norm[reliable_shift], resIncreaseTotal[reliable_shift]);
 
@@ -385,12 +376,12 @@ namespace quda
             warningQuda("solver exiting due to too many true residual norm increases");
             break;
           }
-        } else {
-          resIncrease = 0;
-        }
+	} else {
+	  resIncrease = 0;
+	}
 
-        // explicitly restore the orthogonality of the gradient vector
-        for (int j = 0; j < num_offset_now; j++) {
+	// explicitly restore the orthogonality of the gradient vector
+	for (int j=0; j<num_offset_now; j++) {
           Complex rp = blas::cDotProduct(r_sloppy, p[j]) / (r2[0]);
           blas::caxpy(-rp, r_sloppy, p[j]);
         }
@@ -404,22 +395,22 @@ namespace quda
         }
 
         // update reliable update parameters for the system that triggered the update
-        int m = reliable_shift;
-        rNorm[m] = sqrt(r2[0]) * zeta[m];
-        maxrr[m] = rNorm[m];
-        maxrx[m] = rNorm[m];
+	int m = reliable_shift;
+	rNorm[m] = sqrt(r2[0]) * zeta[m];
+	maxrr[m] = rNorm[m];
+	maxrx[m] = rNorm[m];
         r0Norm[m] = rNorm[m];
         rUpdate++;
       }
 
       // now we can check if any of the shifts have converged and remove them
       int converged = 0;
-      for (int j = num_offset_now - 1; j >= 1; j--) {
-        if (zeta[j] == 0.0 && r2[j + 1] < stop[j + 1]) {
+      for (int j=num_offset_now-1; j>=1; j--) {
+        if (zeta[j] == 0.0 && r2[j+1] < stop[j+1]) {
           converged++;
           logQuda(QUDA_VERBOSE, "Shift %d converged after %d iterations\n", j, k + 1);
         } else {
-          r2[j] = zeta[j] * zeta[j] * r2[0];
+	  r2[j] = zeta[j] * zeta[j] * r2[0];
 
           double iter_residual = sqrt(r2[j] / b2);
           double stop_threshold = sqrt(stop[j] / b2);
@@ -428,11 +419,11 @@ namespace quda
           logQuda(QUDA_VERBOSE, "Shift %d convergence check: zeta=%e, r2=%e, iter_res=%e, stop_thresh=%e, prec_tol=%e\n",
                   j, zeta[j], r2[j], iter_residual, stop_threshold, prec_tol[j]);
           
-          // only remove if shift above has converged
-          if ((r2[j] < stop[j] || sqrt(r2[j] / b2) < prec_tol[j]) && iter[j + 1]) {
-            converged++;
-            iter[j] = k + 1;
-            // logQuda(QUDA_VERBOSE, "Shift %d converged after %d iterations\n", j, k + 1);
+	  // only remove if shift above has converged
+	  if ((r2[j] < stop[j] || sqrt(r2[j] / b2) < prec_tol[j]) && iter[j+1] ) {
+	    converged++;
+	    iter[j] = k+1;
+            logQuda(QUDA_VERBOSE, "Shift %d converged after %d iterations\n", j, k + 1);
             logQuda(QUDA_VERBOSE, "Shift %d converged after %d iterations (normal branch: iter_res=%e)\n", 
               j, k + 1, iter_residual);
           
@@ -449,13 +440,13 @@ namespace quda
                       j, iter_residual, true_res_norm, true_res_norm / iter_residual);
             }
           }
-        }
+	}
       }
       num_offset_now -= converged;
 
       // exit early so that we can finish of shift 0 using CG and allowing for mixed precison refinement
-      if ((mixed || zero_refinement) and param.compute_true_res and num_offset_now == 1) {
-        exit_early = true;
+      if ( (mixed || zero_refinement) and param.compute_true_res and num_offset_now==1) {
+        exit_early=true;
         num_offset_now--;
       }
 
@@ -463,11 +454,11 @@ namespace quda
 
       // this ensure we do the update on any shifted systems that
       // happen to converge when the un-shifted system converges
-      if ((convergence(r2, stop, num_offset_now) || exit_early || k == param.maxiter) && aux_update == true) {
+      if ( (convergence(r2, stop, num_offset_now) || exit_early || k == param.maxiter) && aux_update == true) {
         logQuda(QUDA_VERBOSE, "Convergence of unshifted system so trigger shiftUpdate\n");
 
         // set worker to do all updates at once
-        shift_update.updateNupdate(1);
+	shift_update.updateNupdate(1);
         shift_update.apply();
 
         for (int j = 0; j < num_offset_now; j++) iter[j] = k;
@@ -476,7 +467,7 @@ namespace quda
       logQuda(QUDA_VERBOSE, "%d iterations, <r,r> = %e, |r|/|b| = %e\n", k, r2[0], sqrt(r2[0] / b2));
     }
 
-    for (int i = 0; i < num_offset; i++) {
+    for (int i=0; i<num_offset; i++) {
       if (iter[i] == 0) iter[i] = k;
       if (group_update) blas::xpy(x_sloppy[i], x[i]);
     }
@@ -485,17 +476,16 @@ namespace quda
     getProfile().TPSTART(QUDA_PROFILE_EPILOGUE);
 
     logQuda(QUDA_VERBOSE, "Reliable updates = %d\n", rUpdate);
-    if (k == param.maxiter) warningQuda("Exceeded maximum iterations %d\n", param.maxiter);
+    if (k==param.maxiter) warningQuda("Exceeded maximum iterations %d\n", param.maxiter);
 
     param.iter += k;
 
-    // printfQuda("=============param.compute_true_res = %d=============\n", param.compute_true_res);
     if (param.compute_true_res) {
       for (int i = 0; i < num_offset; i++) {
         // only calculate true residual if we need to:
         // 1.) For higher shifts if we did not use mixed precision
         // 2.) For shift 0 if we did not exit early  (we went to the full solution)
-        if ((i > 0 and not mixed) or (i == 0 and not exit_early)) {
+        if ( (i > 0 and not mixed) or (i == 0 and not exit_early) ) {
           mat(r, x[i]);
           if (r.Nspin() == 4 || r.Nspin() == 2) {
             blas::axpy(offset[i], x[i], r); // Offset it.
@@ -504,12 +494,11 @@ namespace quda
           }
           double true_res = blas::xmyNorm(b, r);
           param.true_res_offset[i] = sqrt(true_res / b2);
-          // param.true_res_hq_offset[i] = sqrt(blas::HeavyQuarkResidualNorm(x[i], r).z); // 只对Ns = 4有效
-          if (x[i].Nspin() == 4) { // 只在nSpin=4时计算重夸克残差
-            param.true_res_hq_offset[i] = sqrt(blas::HeavyQuarkResidualNorm(x[i], r).z);
-          } else {
-            param.true_res_hq_offset[i] = 0.0;
-          }
+          param.true_res_hq_offset[i] = sqrt(blas::HeavyQuarkResidualNorm(x[i], r).z);
+          // if (x[i].Nspin() == 4) { // 只在nSpin=4时计算重夸克残差
+          // } else {
+          //   param.true_res_hq_offset[i] = 0.0;
+          // }
 
           // 添加调试输出
           logQuda(QUDA_VERBOSE, "Final residual for shift %d: true_res_norm=%e, iter_res_norm=%e, x_norm=%e\n",

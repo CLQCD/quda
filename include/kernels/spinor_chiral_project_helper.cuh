@@ -134,7 +134,7 @@ namespace quda
               + K2[offset + s] * static_cast<complex<FloatOut>>(in[s2[offset + s] * Nc + c]);
           }
         }
-      } 
+      }
     }
   };
 

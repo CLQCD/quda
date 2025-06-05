@@ -37,8 +37,6 @@ namespace quda
 
   void TRLM::operator()(std::vector<ColorSpinorField> &kSpace, std::vector<Complex> &evals)
   {
-    // printfQuda("===============Entering TRLM::operator()===============\n");
-
     // Override any user input for block size.
     block_size = 1;
 
@@ -193,8 +191,6 @@ namespace quda
   //---------------------------------------------------------------------------
   void TRLM::lanczosStep(std::vector<ColorSpinorField> &v, int j)
   {
-    // printfQuda("===============Entering TRLM::lanczosStep===============\n");
-
     // Compute r = A * v_j - b_{j-i} * v_{j-1}
     // r = A * v_j
 

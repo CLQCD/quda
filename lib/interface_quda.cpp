@@ -1784,83 +1784,6 @@ namespace quda {
     dEig = Dirac::create(diracEigParam);
   }
 
-  void massRescale(ColorSpinorField &b, QudaInvertParam &param, bool for_multishift)
-  {
-    double kappa5 = (0.5/(5.0 + param.m5));
-    double kappa = (param.dslash_type == QUDA_DOMAIN_WALL_DSLASH || param.dslash_type == QUDA_DOMAIN_WALL_4D_DSLASH
-                    || param.dslash_type == QUDA_MOBIUS_DWF_DSLASH || param.dslash_type == QUDA_MOBIUS_DWF_EOFA_DSLASH) ?
-      kappa5 :
-      param.kappa;
-
-    logQuda(QUDA_DEBUG_VERBOSE, "Mass rescale: Kappa is: %g\n", kappa);
-    logQuda(QUDA_DEBUG_VERBOSE, "Mass rescale: mass normalization: %d\n", param.mass_normalization);
-    logQuda(QUDA_DEBUG_VERBOSE, "Mass rescale: norm of source in = %g\n", blas::norm2(b));
-
-    // staggered dslash uses mass normalization internally
-    if (param.dslash_type == QUDA_ASQTAD_DSLASH || param.dslash_type == QUDA_STAGGERED_DSLASH) {
-      switch (param.solution_type) {
-        case QUDA_MAT_SOLUTION:
-        case QUDA_MATPC_SOLUTION:
-          if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(2.0*param.mass, b);
-          break;
-        case QUDA_MATDAG_MAT_SOLUTION:
-        case QUDA_MATPCDAG_MATPC_SOLUTION:
-          if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(4.0*param.mass*param.mass, b);
-          break;
-        default:
-          errorQuda("Not implemented");
-      }
-      return;
-    }
-
-    // multiply the source to compensate for normalization of the Dirac operator, if necessary
-    // you are responsible for restoring what's in param.offset
-    switch (param.solution_type) {
-      case QUDA_MAT_SOLUTION:
-        if (param.mass_normalization == QUDA_MASS_NORMALIZATION ||
-            param.mass_normalization == QUDA_ASYMMETRIC_MASS_NORMALIZATION) {
-	  blas::ax(2.0*kappa, b);
-          if (for_multishift)
-            for (int i = 0; i < param.num_offset; i++) param.offset[i] *= 2.0 * kappa;
-        }
-        break;
-      case QUDA_MATDAG_MAT_SOLUTION:
-        if (param.mass_normalization == QUDA_MASS_NORMALIZATION ||
-            param.mass_normalization == QUDA_ASYMMETRIC_MASS_NORMALIZATION) {
-	  blas::ax(4.0*kappa*kappa, b);
-          if (for_multishift)
-            for (int i = 0; i < param.num_offset; i++) param.offset[i] *= 4.0 * kappa * kappa;
-        }
-        break;
-      case QUDA_MATPC_SOLUTION:
-        if (param.mass_normalization == QUDA_MASS_NORMALIZATION) {
-	  blas::ax(4.0*kappa*kappa, b);
-          if (for_multishift)
-            for (int i = 0; i < param.num_offset; i++) param.offset[i] *= 4.0 * kappa * kappa;
-        } else if (param.mass_normalization == QUDA_ASYMMETRIC_MASS_NORMALIZATION) {
-	  blas::ax(2.0*kappa, b);
-          if (for_multishift)
-            for (int i = 0; i < param.num_offset; i++) param.offset[i] *= 2.0 * kappa;
-        }
-        break;
-      case QUDA_MATPCDAG_MATPC_SOLUTION:
-        if (param.mass_normalization == QUDA_MASS_NORMALIZATION) {
-	  blas::ax(16.0*std::pow(kappa,4), b);
-          if (for_multishift)
-            for (int i = 0; i < param.num_offset; i++) param.offset[i] *= 16.0 * std::pow(kappa, 4);
-        } else if (param.mass_normalization == QUDA_ASYMMETRIC_MASS_NORMALIZATION) {
-	  blas::ax(4.0*kappa*kappa, b);
-          if (for_multishift)
-            for (int i = 0; i < param.num_offset; i++) param.offset[i] *= 4.0 * kappa * kappa;
-        }
-        break;
-      default:
-        errorQuda("Solution type %d not supported", param.solution_type);
-    }
-
-    logQuda(QUDA_DEBUG_VERBOSE, "Mass rescale: norm of source out = %g\n", blas::norm2(b));
-  }
-
   void setupHermitianWilson(QudaInvertParam *param, const lat_dim_t &X, std::vector<ColorSpinorField> &evecs, std::vector<Complex> &evals)
   {
     DiracParam diracWilsonParam;
@@ -1933,33 +1856,6 @@ namespace quda {
     delete mWilson;
     delete dWilson;
 
-  }
-}
-
-void distanceReweight(ColorSpinorField &b, QudaInvertParam &param, bool inverse)
-{
-  // Force the alpha0 to be positive.
-  // A negative alpha0 matches something like Eq.(12) in arXiv:1006.4028.
-  // Disable the negative situation as QUDA already has multigrid for light quarks.
-  const double alpha0 = abs(param.distance_pc_alpha0);
-  const int t0 = param.distance_pc_t0;
-  if (alpha0 != 0.0 && t0 >= 0) {
-    if (param.dslash_type != QUDA_WILSON_DSLASH && param.dslash_type != QUDA_CLOVER_WILSON_DSLASH) {
-      errorQuda("Only Wilson and Wilson-clover dslash support distance preconditioning, but get dslash_type %d\n",
-                param.dslash_type);
-    }
-    if (param.inv_type == QUDA_MG_INVERTER) {
-      errorQuda("Multigrid solver doesn't support distance preconditioning\n");
-    }
-    if (param.cuda_prec != QUDA_DOUBLE_PRECISION || param.cuda_prec_sloppy != QUDA_DOUBLE_PRECISION) {
-      warningQuda(
-        "Using single or half (sloppy) precision in distance preconditioning sometimes makes the solver diverge");
-    }
-
-    if (inverse)
-      spinorDistanceReweight(b, -alpha0, t0);
-    else
-      spinorDistanceReweight(b, alpha0, t0);
   }
 }
 
@@ -3673,7 +3569,6 @@ void invertOverlapQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
 
 }
 
-// test overlap propagator(chiral)
 void invertQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
 {
   auto profile = pushProfile(profileInvert, param);
@@ -3682,7 +3577,11 @@ void invertQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
   if (!initialized) errorQuda("QUDA not initialized");
 
   pushVerbosity(param->verbosity);
-  
+  if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printQudaInvertParam(param);
+
+  checkInvertParam(param, hp_x, hp_b);
+
+  // check the gauge fields have been created
   GaugeField *cudaGauge = checkGauge(param);
 
   solve({hp_x}, {hp_b}, *param, *cudaGauge);
@@ -3692,292 +3591,6 @@ void invertQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
   profilerStop(__func__);
   popVerbosity();
 }
-
-// The original invertQuda function
-// void invertQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
-// {
-//   auto profile = pushProfile(profileInvert, param->secs, param->gflops);
-//   profilerStart(__func__);
-
-//   if (!initialized) errorQuda("QUDA not initialized");
-
-//   pushVerbosity(param->verbosity);
-//   if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printQudaInvertParam(param);
-
-//   checkInvertParam(param, hp_x, hp_b);
-
-//   // check the gauge fields have been created
-//   GaugeField *cudaGauge = checkGauge(param);
-
-//   // It was probably a bad design decision to encode whether the system is even/odd preconditioned (PC) in
-//   // solve_type and solution_type, rather than in separate members of QudaInvertParam.  We're stuck with it
-//   // for now, though, so here we factorize everything for convenience.
-
-//   bool pc_solution = (param->solution_type == QUDA_MATPC_SOLUTION) ||
-//     (param->solution_type == QUDA_MATPCDAG_MATPC_SOLUTION);
-//   bool pc_solve = (param->solve_type == QUDA_DIRECT_PC_SOLVE) ||
-//     (param->solve_type == QUDA_NORMOP_PC_SOLVE) || (param->solve_type == QUDA_NORMERR_PC_SOLVE);
-//   bool mat_solution = (param->solution_type == QUDA_MAT_SOLUTION) ||
-//     (param->solution_type ==  QUDA_MATPC_SOLUTION);
-//   bool direct_solve = (param->solve_type == QUDA_DIRECT_SOLVE) ||
-//     (param->solve_type == QUDA_DIRECT_PC_SOLVE);
-//   bool norm_error_solve = (param->solve_type == QUDA_NORMERR_SOLVE) ||
-//     (param->solve_type == QUDA_NORMERR_PC_SOLVE);
-
-//   param->iter = 0;
-
-//   Dirac *d = nullptr;
-//   Dirac *dSloppy = nullptr;
-//   Dirac *dPre = nullptr;
-//   Dirac *dEig = nullptr;
-
-//   // Create the dirac operator and operators for sloppy, precondition,
-//   // and an eigensolver
-//   createDiracWithEig(d, dSloppy, dPre, dEig, *param, pc_solve);
-
-//   // Setup eigensystem for hermitian Wilson operator
-//   if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
-//     const int n_eig = param->hermitian_wilson_n_ev;
-//     const double invsqrt_tol = param->overlap_invsqrt_tol;
-//     std::vector<ColorSpinorField> evecs(n_eig);
-//     std::vector<Complex> evals(n_eig);
-//     setupHermitianWilson(param, cudaGauge->X(), evecs, evals);
-//     ((DiracOverlap *)d)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-//     ((DiracOverlap *)dSloppy)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-//     ((DiracOverlap *)dPre)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-//     ((DiracOverlap *)dEig)->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-//   }
-
-//   Dirac &dirac = *d;
-//   Dirac &diracSloppy = *dSloppy;
-//   Dirac &diracPre = *dPre;
-//   Dirac &diracEig = *dEig;
-
-//   // wrap CPU host side pointers
-//   ColorSpinorParam cpuParam(hp_b, *param, cudaGauge->X(), pc_solution, param->input_location);
-//   ColorSpinorField h_b(cpuParam);
-
-//   cpuParam.v = hp_x;
-//   cpuParam.location = param->output_location;
-//   ColorSpinorField h_x(cpuParam);
-
-//   // download source
-//   ColorSpinorParam cudaParam(cpuParam, *param, QUDA_CUDA_FIELD_LOCATION);
-//   cudaParam.create = QUDA_COPY_FIELD_CREATE;
-//   cudaParam.field = &h_b;
-//   ColorSpinorField b(cudaParam);
-
-//   // now check if we need to invalidate the solutionResident vectors
-//   ColorSpinorField x;
-//   if (param->use_resident_solution == 1) {
-//     for (auto &v : solutionResident) {
-//       if (b.Precision() != v.Precision() || b.SiteSubset() != v.SiteSubset()) {
-//         solutionResident.clear();
-//         break;
-//       }
-//     }
-
-//     if (!solutionResident.size()) {
-//       cudaParam.create = QUDA_NULL_FIELD_CREATE;
-//       solutionResident = std::vector<ColorSpinorField>(1, cudaParam);
-//     }
-//     x = solutionResident[0].create_alias(cudaParam);
-//   } else {
-//     cudaParam.create = QUDA_NULL_FIELD_CREATE;
-//     x = ColorSpinorField(cudaParam);
-//   }
-
-//   if (param->use_init_guess == QUDA_USE_INIT_GUESS_YES && !param->chrono_use_resident) { // download initial guess
-//     // initial guess only supported for single-pass solvers
-//     if ((param->solution_type == QUDA_MATDAG_MAT_SOLUTION || param->solution_type == QUDA_MATPCDAG_MATPC_SOLUTION) &&
-//         (param->solve_type == QUDA_DIRECT_SOLVE || param->solve_type == QUDA_DIRECT_PC_SOLVE)) {
-//       errorQuda("Initial guess not supported for two-pass solver");
-//     }
-
-//     x = h_x; // solution
-//   } else { // zero initial guess
-//     blas::zero(x);
-//   }
-
-//   // if we're doing a managed memory MG solve and prefetching is
-//   // enabled, prefetch all the Dirac matrices. There's probably
-//   // a better place to put this...
-//   if (param->inv_type_precondition == QUDA_MG_INVERTER) {
-//     dirac.prefetch(QUDA_CUDA_FIELD_LOCATION);
-//     diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
-//     diracPre.prefetch(QUDA_CUDA_FIELD_LOCATION);
-//   }
-
-//   profileInvert.TPSTART(QUDA_PROFILE_PREAMBLE);
-
-//   double nb = blas::norm2(b);
-//   if (nb==0.0) errorQuda("Source has zero norm");
-//   logQuda(QUDA_VERBOSE, "Source: %g\n", nb);
-//   if (param->use_init_guess == QUDA_USE_INIT_GUESS_YES) logQuda(QUDA_VERBOSE, "Initial guess: %g\n", blas::norm2(x));
-
-//   // rescale the source and solution vectors to help prevent the onset of underflow
-//   if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) {
-//     blas::ax(1.0 / sqrt(nb), b);
-//     blas::ax(1.0 / sqrt(nb), x);
-//   }
-
-//   massRescale(b, *param, false);
-//   distanceReweight(b, *param, true);
-
-//   ColorSpinorField in;
-//   ColorSpinorField out;
-//   dirac.prepare(out, in, x, b, param->solution_type);
-
-//   logQuda(QUDA_VERBOSE, "Prepared source = %g\n", blas::norm2(in));
-//   logQuda(QUDA_VERBOSE, "Prepared solution = %g\n", blas::norm2(out));
-
-//   // solution_type specifies *what* system is to be solved.
-//   // solve_type specifies *how* the system is to be solved.
-//   //
-//   // We have the following four cases (plus preconditioned variants):
-//   //
-//   // solution_type    solve_type    Effect
-//   // -------------    ----------    ------
-//   // MAT              DIRECT        Solve Ax=b
-//   // MATDAG_MAT       DIRECT        Solve A^dag y = b, followed by Ax=y
-//   // MAT              NORMOP        Solve (A^dag A) x = (A^dag b)
-//   // MATDAG_MAT       NORMOP        Solve (A^dag A) x = b
-//   // MAT              NORMERR       Solve (A A^dag) y = b, then x = A^dag y
-//   //
-//   // We generally require that the solution_type and solve_type
-//   // preconditioning match.  As an exception, the unpreconditioned MAT
-//   // solution_type may be used with any solve_type, including
-//   // DIRECT_PC and NORMOP_PC.  In these cases, preparation of the
-//   // preconditioned source and reconstruction of the full solution are
-//   // taken care of by Dirac::prepare() and Dirac::reconstruct(),
-//   // respectively.
-
-//   profileInvert.TPSTOP(QUDA_PROFILE_PREAMBLE);
-
-//   if (mat_solution && !direct_solve && !norm_error_solve) { // prepare source: b' = A^dag b
-//     ColorSpinorField tmp(in);
-//     dirac.Mdag(in, tmp);
-//   } else if (!mat_solution && direct_solve) { // perform the first of two solves: A^dag y = b
-//     DiracMdag m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
-//     SolverParam solverParam(*param);
-//     Solver *solve = Solver::create(solverParam, m, mSloppy, mPre, mEig);
-//     (*solve)(out, in);
-//     blas::copy(in, out);
-//     delete solve;
-//     solverParam.updateInvertParam(*param);
-//   }
-
-//   if (direct_solve) {
-//     DiracM m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
-//     SolverParam solverParam(*param);
-
-//     // chronological forecasting
-//     if (param->chrono_use_resident && chronoResident[param->chrono_index].size() > 0) {
-//       bool hermitian = false;
-//       auto &mChrono = param->chrono_precision == param->cuda_prec ? m : mSloppy;
-//       chronoExtrapolate(out, in, chronoResident[param->chrono_index], mChrono, hermitian);
-//     }
-
-//     Solver *solve = Solver::create(solverParam, m, mSloppy, mPre, mEig);
-//     (*solve)(out, in);
-//     delete solve;
-//     solverParam.updateInvertParam(*param);
-//   } else if (!norm_error_solve) {
-//     DiracMdagM m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
-//     SolverParam solverParam(*param);
-
-//     // chronological forecasting
-//     if (param->chrono_use_resident && chronoResident[param->chrono_index].size() > 0) {
-//       bool hermitian = true;
-//       auto &mChrono = param->chrono_precision == param->cuda_prec ? m : mSloppy;
-//       chronoExtrapolate(out, in, chronoResident[param->chrono_index], mChrono, hermitian);
-//     }
-
-//     // if using a Schwarz preconditioner with a normal operator then we must use the DiracMdagMLocal operator
-//     if (param->inv_type_precondition != QUDA_INVALID_INVERTER && param->schwarz_type != QUDA_INVALID_SCHWARZ) {
-//       DiracMdagMLocal mPreLocal(diracPre);
-//       Solver *solve = Solver::create(solverParam, m, mSloppy, mPreLocal, mEig);
-//       (*solve)(out, in);
-//       delete solve;
-//       solverParam.updateInvertParam(*param);
-//     } else {
-//       Solver *solve = Solver::create(solverParam, m, mSloppy, mPre, mEig);
-//       (*solve)(out, in);
-//       delete solve;
-//       solverParam.updateInvertParam(*param);
-//     }
-//   } else { // norm_error_solve
-//     DiracMMdag m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
-//     ColorSpinorField tmp(out);
-//     SolverParam solverParam(*param);
-//     Solver *solve = Solver::create(solverParam, m, mSloppy, mPre, mEig);
-//     (*solve)(tmp, in);    // y = (M M^\dag) b
-//     dirac.Mdag(out, tmp); // x = M^dag y
-//     delete solve;
-//     solverParam.updateInvertParam(*param);
-//   }
-
-//   logQuda(QUDA_VERBOSE, "Solution = %g\n", blas::norm2(x));
-
-//   profileInvert.TPSTART(QUDA_PROFILE_EPILOGUE);
-//   if (param->chrono_make_resident) {
-//     const int i = param->chrono_index;
-//     if (i >= QUDA_MAX_CHRONO)
-//       errorQuda("Requested chrono index %d is outside of max %d\n", i, QUDA_MAX_CHRONO);
-
-//     auto &basis = chronoResident[i];
-
-//     if (param->chrono_max_dim < (int)basis.size()) {
-//       errorQuda("Requested chrono_max_dim %i is smaller than already existing chronology %lu", param->chrono_max_dim, basis.size());
-//     }
-
-//     if(not param->chrono_replace_last){
-//       // if we have not filled the space yet just augment
-//       if ((int)basis.size() < param->chrono_max_dim) {
-//         ColorSpinorParam cs_param(out);
-//         cs_param.setPrecision(param->chrono_precision);
-//         basis.emplace_back(cs_param);
-//       }
-
-//       // shuffle every entry down one and bring the last to the front
-//       std::rotate(basis.begin(), basis.end() - 1, basis.end());
-//     }
-//     basis[0] = out; // set first entry to new solution
-//   }
-//   dirac.reconstruct(x, b, param->solution_type);
-
-//   distanceReweight(x, *param, false);
-
-//   if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) {
-//     // rescale the solution
-//     blas::ax(sqrt(nb), x);
-//   }
-
-//   if (param->compute_action) {
-//     Complex action = blas::cDotProduct(b, x);
-//     param->action[0] = action.real();
-//     param->action[1] = action.imag();
-//   }
-
-//   profileInvert.TPSTOP(QUDA_PROFILE_EPILOGUE);
-
-//   if (!param->make_resident_solution) h_x = x;
-
-//   logQuda(QUDA_VERBOSE, "Reconstructed solution: %g\n", blas::norm2(x));
-
-//   if (param->use_resident_solution && !param->make_resident_solution) solutionResident.clear();
-
-//   delete d;
-//   delete dSloppy;
-//   delete dPre;
-//   delete dEig;
-
-//   // cache is written out even if a long benchmarking job gets interrupted
-//   saveTuneCache();
-
-//   profilerStop(__func__);
-//   popVerbosity();
-// }
 
 void loadFatLongGaugeQuda(QudaInvertParam *inv_param, QudaGaugeParam *gauge_param, void *milc_fatlinks,
                           void *milc_longlinks)
@@ -4374,333 +3987,330 @@ void dslashMultiSrcQuda(void **_hp_x, void **_hp_b, QudaInvertParam *param, Quda
  * solve type must be DIRECT_PC. This difference in convention is because
  * preconditioned staggered operator is normal, unlike with Wilson-type fermions.
  */
-// void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
-// {
-//   auto profile = pushProfile(profileMulti, param->secs, param->gflops);
-//   profilerStart(__func__);
+void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
+{
+  auto profile = pushProfile(profileMulti, param);
+  profilerStart(__func__);
 
-//   if (!initialized) errorQuda("QUDA not initialized");
+  if (!initialized) errorQuda("QUDA not initialized");
 
-//   checkInvertParam(param, hp_x[0], hp_b);
+  checkInvertParam(param, hp_x[0], hp_b);
 
-//   // check the gauge fields have been created
-//   checkGauge(param);
+  // check the gauge fields have been created
+  checkGauge(param);
 
-//   if (param->num_offset > QUDA_MAX_MULTI_SHIFT)
-//     errorQuda("Number of shifts %d requested greater than QUDA_MAX_MULTI_SHIFT %d", param->num_offset,
-//               QUDA_MAX_MULTI_SHIFT);
+  if (param->num_offset > QUDA_MAX_MULTI_SHIFT)
+    errorQuda("Number of shifts %d requested greater than QUDA_MAX_MULTI_SHIFT %d", param->num_offset,
+              QUDA_MAX_MULTI_SHIFT);
 
-//   pushVerbosity(param->verbosity);
+  pushVerbosity(param->verbosity);
 
-//   bool pc_solution = (param->solution_type == QUDA_MATPC_SOLUTION) || (param->solution_type == QUDA_MATPCDAG_MATPC_SOLUTION);
-//   bool pc_solve = (param->solve_type == QUDA_DIRECT_PC_SOLVE) || (param->solve_type == QUDA_NORMOP_PC_SOLVE);
-//   bool mat_solution = (param->solution_type == QUDA_MAT_SOLUTION) || (param->solution_type ==  QUDA_MATPC_SOLUTION);
-//   bool direct_solve = (param->solve_type == QUDA_DIRECT_SOLVE) || (param->solve_type == QUDA_DIRECT_PC_SOLVE);
+  bool pc_solution = (param->solution_type == QUDA_MATPC_SOLUTION) || (param->solution_type == QUDA_MATPCDAG_MATPC_SOLUTION);
+  bool pc_solve = (param->solve_type == QUDA_DIRECT_PC_SOLVE) || (param->solve_type == QUDA_NORMOP_PC_SOLVE);
+  bool mat_solution = (param->solution_type == QUDA_MAT_SOLUTION) || (param->solution_type ==  QUDA_MATPC_SOLUTION);
+  bool direct_solve = (param->solve_type == QUDA_DIRECT_SOLVE) || (param->solve_type == QUDA_DIRECT_PC_SOLVE);
 
-//   if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-//       param->dslash_type == QUDA_STAGGERED_DSLASH) {
+  if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
+      param->dslash_type == QUDA_STAGGERED_DSLASH) {
 
-//     if (param->solution_type != QUDA_MATPC_SOLUTION) {
-//       errorQuda("For Staggered-type fermions, multi-shift solver only supports MATPC solution type");
-//     }
+    if (param->solution_type != QUDA_MATPC_SOLUTION) {
+      errorQuda("For Staggered-type fermions, multi-shift solver only supports MATPC solution type");
+    }
 
-//     if (param->solve_type != QUDA_DIRECT_PC_SOLVE) {
-//       errorQuda("For Staggered-type fermions, multi-shift solver only supports DIRECT_PC solve types");
-//     }
+    if (param->solve_type != QUDA_DIRECT_PC_SOLVE) {
+      errorQuda("For Staggered-type fermions, multi-shift solver only supports DIRECT_PC solve types");
+    }
 
-//   } else { // Wilson type
+  } else { // Wilson type
 
-//     if (mat_solution) {
-//       errorQuda("For Wilson-type fermions, multi-shift solver does not support MAT or MATPC solution types");
-//     }
-//     if (direct_solve) {
-//       errorQuda("For Wilson-type fermions, multi-shift solver does not support DIRECT or DIRECT_PC solve types");
-//     }
-//     if (pc_solution & !pc_solve) {
-//       errorQuda("For Wilson-type fermions, preconditioned (PC) solution_type requires a PC solve_type");
-//     }
-//     if (!pc_solution & pc_solve) {
-//       errorQuda("For Wilson-type fermions, in multi-shift solver, a preconditioned (PC) solve_type requires a PC solution_type");
-//     }
-//   }
+    if (mat_solution) {
+      errorQuda("For Wilson-type fermions, multi-shift solver does not support MAT or MATPC solution types");
+    }
+    if (direct_solve) {
+      errorQuda("For Wilson-type fermions, multi-shift solver does not support DIRECT or DIRECT_PC solve types");
+    }
+    if (pc_solution & !pc_solve) {
+      errorQuda("For Wilson-type fermions, preconditioned (PC) solution_type requires a PC solve_type");
+    }
+    if (!pc_solution & pc_solve) {
+      errorQuda("For Wilson-type fermions, in multi-shift solver, a preconditioned (PC) solve_type requires a PC solution_type");
+    }
+  }
 
-//   param->iter = 0;
+  param->iter = 0;
 
-//   for (int i=0; i<param->num_offset-1; i++) {
-//     for (int j=i+1; j<param->num_offset; j++) {
-//       if (param->offset[i] > param->offset[j])
-//         errorQuda("Offsets must be ordered from smallest to largest");
-//     }
-//   }
+  for (int i=0; i<param->num_offset-1; i++) {
+    for (int j=i+1; j<param->num_offset; j++) {
+      if (param->offset[i] > param->offset[j])
+        errorQuda("Offsets must be ordered from smallest to largest");
+    }
+  }
 
-//   if (param->distance_pc_alpha0 != 0.0 && param->distance_pc_t0 >= 0) {
-//     errorQuda("Multi-shift solver does not support distance preconditioning");
-//   }
+  if (param->distance_pc_alpha0 != 0.0 && param->distance_pc_t0 >= 0) {
+    errorQuda("Multi-shift solver does not support distance preconditioning");
+  }
 
-//   // Create the matrix.
-//   // The way this works is that createDirac will create 'd' and 'dSloppy'
-//   // which are global. We then grab these with references...
-//   //
-//   // Balint: Isn't there a nice construction pattern we could use here? This is
-//   // expedient but yucky.
-//   //  DiracParam diracParam;
-//   if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-//       param->dslash_type == QUDA_STAGGERED_DSLASH){
-//     param->mass = sqrt(param->offset[0]/4);
-//   }
+  // Create the matrix.
+  // The way this works is that createDirac will create 'd' and 'dSloppy'
+  // which are global. We then grab these with references...
+  //
+  // Balint: Isn't there a nice construction pattern we could use here? This is
+  // expedient but yucky.
+  //  DiracParam diracParam;
+  if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
+      param->dslash_type == QUDA_STAGGERED_DSLASH){
+    param->mass = sqrt(param->offset[0]/4);
+  }
 
-//   Dirac *d = nullptr;
-//   Dirac *dSloppy = nullptr;
-//   Dirac *dPre = nullptr;
-//   Dirac *dRefine = nullptr;
+  Dirac *d = nullptr;
+  Dirac *dSloppy = nullptr;
+  Dirac *dPre = nullptr;
+  Dirac *dRefine = nullptr;
 
-//   // Create the dirac operator and a sloppy, precon, and refine.
-//   createDiracWithRefine(d, dSloppy, dPre, dRefine, *param, pc_solve);
-//   Dirac &dirac = *d;
-//   Dirac &diracSloppy = *dSloppy;
-//   dirac.prefetch(QUDA_CUDA_FIELD_LOCATION);
-//   diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
+  // Create the dirac operator and a sloppy, precon, and refine.
+  createDiracWithRefine(d, dSloppy, dPre, dRefine, *param, pc_solve);
+  Dirac &dirac = *d;
+  Dirac &diracSloppy = *dSloppy;
+  dirac.prefetch(QUDA_CUDA_FIELD_LOCATION);
+  diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
 
-//   std::vector<double> r2_old(param->num_offset);
+  std::vector<double> r2_old(param->num_offset);
 
-//   // Grab the dimension array of the input gauge field.
-//   const auto X = (param->dslash_type == QUDA_ASQTAD_DSLASH) ? gaugeFatPrecise->X() : gaugePrecise->X();
+  // Grab the dimension array of the input gauge field.
+  const auto X = (param->dslash_type == QUDA_ASQTAD_DSLASH) ? gaugeFatPrecise->X() : gaugePrecise->X();
 
-//   // This creates a ColorSpinorParam struct, from the host data
-//   // pointer, the definitions in param, the dimensions X, and whether
-//   // the solution is on a checkerboard instruction or not. These can
-//   // then be used as 'instructions' to create the actual
-//   // ColorSpinorField
-//   ColorSpinorParam cpuParam(hp_b, *param, X, pc_solution, param->input_location);
-//   ColorSpinorField h_b(cpuParam);
+  // This creates a ColorSpinorParam struct, from the host data
+  // pointer, the definitions in param, the dimensions X, and whether
+  // the solution is on a checkerboard instruction or not. These can
+  // then be used as 'instructions' to create the actual
+  // ColorSpinorField
+  ColorSpinorParam cpuParam(hp_b, *param, X, pc_solution, param->input_location);
+  ColorSpinorField h_b(cpuParam);
 
-//   std::vector<ColorSpinorField> h_x;
-//   h_x.resize(param->num_offset);
+  std::vector<ColorSpinorField> h_x;
+  h_x.resize(param->num_offset);
 
-//   cpuParam.location = param->output_location;
-//   for(int i=0; i < param->num_offset; i++) {
-//     cpuParam.v = hp_x[i];
-//     h_x[i] = ColorSpinorField(cpuParam);
-//   }
+  cpuParam.location = param->output_location;
+  for(int i=0; i < param->num_offset; i++) {
+    cpuParam.v = hp_x[i];
+    h_x[i] = ColorSpinorField(cpuParam);
+  }
 
-//   // Now I need a colorSpinorParam for the device
-//   ColorSpinorParam cudaParam(cpuParam, *param, QUDA_CUDA_FIELD_LOCATION);
-//   // This setting will download a host vector
-//   cudaParam.create = QUDA_COPY_FIELD_CREATE;
-//   cudaParam.field = &h_b;
-//   ColorSpinorField b(cudaParam); // Creates b and downloads h_b to it
+  // Now I need a colorSpinorParam for the device
+  ColorSpinorParam cudaParam(cpuParam, *param, QUDA_CUDA_FIELD_LOCATION);
+  // This setting will download a host vector
+  cudaParam.create = QUDA_COPY_FIELD_CREATE;
+  cudaParam.field = &h_b;
+  ColorSpinorField b(cudaParam); // Creates b and downloads h_b to it
 
-//   // Create the solution fields filled with zero
-//   cudaParam.create = QUDA_ZERO_FIELD_CREATE;
+  // Create the solution fields filled with zero
+  cudaParam.create = QUDA_ZERO_FIELD_CREATE;
 
-//   // now check if we need to invalidate the solution vectors
-//   for (auto &v : solutionResident) {
-//     if (cudaParam.Precision() != v.Precision()) {
-//       solutionResident.clear();
-//       break;
-//     }
-//   }
+  // now check if we need to invalidate the solution vectors
+  for (auto &v : solutionResident) {
+    if (cudaParam.Precision() != v.Precision()) {
+      solutionResident.clear();
+      break;
+    }
+  }
 
-//   // grow/shrink resident solutions to be correct size
-//   auto old_size = solutionResident.size();
-//   solutionResident.resize(param->num_offset);
-//   for (auto i = old_size; i < solutionResident.size(); i++) solutionResident[i] = ColorSpinorField(cudaParam);
+  // grow/shrink resident solutions to be correct size
+  auto old_size = solutionResident.size();
+  solutionResident.resize(param->num_offset);
+  for (auto i = old_size; i < solutionResident.size(); i++) solutionResident[i] = ColorSpinorField(cudaParam);
 
-//   std::vector<ColorSpinorField> &x = solutionResident;
-//   std::vector<ColorSpinorField> p;
+  std::vector<ColorSpinorField> &x = solutionResident;
+  std::vector<ColorSpinorField> p;
 
-//   profileMulti.TPSTART(QUDA_PROFILE_PREAMBLE);
+  profileMulti.TPSTART(QUDA_PROFILE_PREAMBLE);
 
-//   // Check source norms
-//   double nb = blas::norm2(b);
-//   if (nb==0.0) errorQuda("Source has zero norm");
-//   logQuda(QUDA_VERBOSE, "Source: %g\n", nb);
+  // Check source norms
+  double nb = blas::norm2(b);
+  if (nb==0.0) errorQuda("Source has zero norm");
+  logQuda(QUDA_VERBOSE, "Source: %g\n", nb);
 
-//   // rescale the source vector to help prevent the onset of underflow
-//   if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { blas::ax(1.0 / sqrt(nb), b); }
+  // rescale the source vector to help prevent the onset of underflow
+  if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { blas::ax(1.0 / sqrt(nb), b); }
 
-//   // backup shifts
-//   double unscaled_shifts[QUDA_MAX_MULTI_SHIFT];
-//   for (int i = 0; i < param->num_offset; i++) { unscaled_shifts[i] = param->offset[i]; }
+  // backup shifts
+  double unscaled_shifts[QUDA_MAX_MULTI_SHIFT];
+  for (int i = 0; i < param->num_offset; i++) { unscaled_shifts[i] = param->offset[i]; }
 
-//   // rescale
-//   massRescale(b, *param, true);
-//   profileMulti.TPSTOP(QUDA_PROFILE_PREAMBLE);
+  // rescale
+  massRescale(b, *param, true);
+  profileMulti.TPSTOP(QUDA_PROFILE_PREAMBLE);
 
-//   DiracMatrix *m, *mSloppy;
+  DiracMatrix *m, *mSloppy;
 
-//   if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-//       param->dslash_type == QUDA_STAGGERED_DSLASH) {
-//     m = new DiracM(dirac);
-//     mSloppy = new DiracM(diracSloppy);
-//   } else {
-//     m = new DiracMdagM(dirac);
-//     mSloppy = new DiracMdagM(diracSloppy);
-//   }
+  if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
+      param->dslash_type == QUDA_STAGGERED_DSLASH) {
+    m = new DiracM(dirac);
+    mSloppy = new DiracM(diracSloppy);
+  } else {
+    m = new DiracMdagM(dirac);
+    mSloppy = new DiracMdagM(diracSloppy);
+  }
 
-//   SolverParam solverParam(*param);
-//   {
-//     MultiShiftCG cg_m(*m, *mSloppy, solverParam);
-//     cg_m(x, b, p, r2_old);
-//   }
-//   solverParam.updateInvertParam(*param);
+  SolverParam solverParam(*param);
+  {
+    MultiShiftCG cg_m(*m, *mSloppy, solverParam);
+    cg_m(x, b, p, r2_old);
+  }
+  solverParam.updateInvertParam(*param);
 
-//   delete m;
-//   delete mSloppy;
+  delete m;
+  delete mSloppy;
 
-//   if (param->compute_true_res) {
-//     // check each shift has the desired tolerance and use sequential CG to refine
-//     cudaParam.create = QUDA_ZERO_FIELD_CREATE;
-//     ColorSpinorField r(cudaParam);
-//     QudaInvertParam refineparam = *param;
-//     refineparam.cuda_prec_sloppy = param->cuda_prec_refinement_sloppy;
-//     Dirac &dirac = *d;
-//     Dirac &diracSloppy = *dRefine;
-//     diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
+  if (param->compute_true_res) {
+    // check each shift has the desired tolerance and use sequential CG to refine
+    cudaParam.create = QUDA_ZERO_FIELD_CREATE;
+    ColorSpinorField r(cudaParam);
+    QudaInvertParam refineparam = *param;
+    refineparam.cuda_prec_sloppy = param->cuda_prec_refinement_sloppy;
+    Dirac &dirac = *d;
+    Dirac &diracSloppy = *dRefine;
+    diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
 
-// #define REFINE_INCREASING_MASS
-// #ifdef REFINE_INCREASING_MASS
-//     for(int i=0; i < param->num_offset; i++) {
-// #else
-//     for(int i=param->num_offset-1; i >= 0; i--) {
-// #endif
-//       double rsd_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ?
-// 	param->true_res_hq_offset[i] : 0;
-//       double tol_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ?
-// 	param->tol_hq_offset[i] : 0;
+#define REFINE_INCREASING_MASS
+#ifdef REFINE_INCREASING_MASS
+    for(int i=0; i < param->num_offset; i++) {
+#else
+    for(int i=param->num_offset-1; i >= 0; i--) {
+#endif
+      double rsd_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ?
+	param->true_res_hq_offset[i] : 0;
+      double tol_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ?
+	param->tol_hq_offset[i] : 0;
 
-//       /*
-// 	In the case where the shifted systems have zero tolerance
-// 	specified, we refine these systems until either the limit of
-// 	precision is reached (prec_tol) or until the tolerance reaches
-// 	the iterated residual tolerance of the previous multi-shift
-// 	solver (iter_res_offset[i]), which ever is greater.
-//       */
-//       const double prec_tol = std::pow(10.,(-2*(int)param->cuda_prec+4)); // implicit refinment limit of 1e-12
-//       const double iter_tol = (param->iter_res_offset[i] < prec_tol ? prec_tol : (param->iter_res_offset[i] *1.1));
-//       const double refine_tol = (param->tol_offset[i] == 0.0 ? iter_tol : param->tol_offset[i]);
-//       // refine if either L2 or heavy quark residual tolerances have not been met, only if desired residual is > 0
-//       if (param->true_res_offset[i] > refine_tol || rsd_hq > tol_hq) {
-//         logQuda(QUDA_SUMMARIZE, "Refining shift %d: L2 residual %e / %e, heavy quark %e / %e (actual / requested)\n", i,
-//                 param->true_res_offset[i], param->tol_offset[i], rsd_hq, tol_hq);
+      /*
+	In the case where the shifted systems have zero tolerance
+	specified, we refine these systems until either the limit of
+	precision is reached (prec_tol) or until the tolerance reaches
+	the iterated residual tolerance of the previous multi-shift
+	solver (iter_res_offset[i]), which ever is greater.
+      */
+      const double prec_tol = std::pow(10.,(-2*(int)param->cuda_prec+4)); // implicit refinment limit of 1e-12
+      const double iter_tol = (param->iter_res_offset[i] < prec_tol ? prec_tol : (param->iter_res_offset[i] *1.1));
+      const double refine_tol = (param->tol_offset[i] == 0.0 ? iter_tol : param->tol_offset[i]);
+      // refine if either L2 or heavy quark residual tolerances have not been met, only if desired residual is > 0
+      if (param->true_res_offset[i] > refine_tol || rsd_hq > tol_hq) {
+        logQuda(QUDA_SUMMARIZE, "Refining shift %d: L2 residual %e / %e, heavy quark %e / %e (actual / requested)\n", i,
+                param->true_res_offset[i], param->tol_offset[i], rsd_hq, tol_hq);
 
-//         // for staggered the shift is just a change in mass term (FIXME: for twisted mass also)
-//         if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-//             param->dslash_type == QUDA_STAGGERED_DSLASH) {
-//           dirac.setMass(sqrt(param->offset[i]/4));
-//           diracSloppy.setMass(sqrt(param->offset[i]/4));
-//         }
+        // for staggered the shift is just a change in mass term (FIXME: for twisted mass also)
+        if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
+            param->dslash_type == QUDA_STAGGERED_DSLASH) {
+          dirac.setMass(sqrt(param->offset[i]/4));
+          diracSloppy.setMass(sqrt(param->offset[i]/4));
+        }
 
-//         DiracMatrix *m, *mSloppy;
+        DiracMatrix *m, *mSloppy;
 
-//         if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-//             param->dslash_type == QUDA_STAGGERED_DSLASH) {
-//           m = new DiracM(dirac);
-//           mSloppy = new DiracM(diracSloppy);
-//         } else {
-//           m = new DiracMdagM(dirac);
-//           mSloppy = new DiracMdagM(diracSloppy);
-//         }
+        if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
+            param->dslash_type == QUDA_STAGGERED_DSLASH) {
+          m = new DiracM(dirac);
+          mSloppy = new DiracM(diracSloppy);
+        } else {
+          m = new DiracMdagM(dirac);
+          mSloppy = new DiracMdagM(diracSloppy);
+        }
 
-//         // need to curry in the shift if we are not doing staggered
-//         if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
-//           m->shift = param->offset[i];
-//           mSloppy->shift = param->offset[i];
-//         }
+        // need to curry in the shift if we are not doing staggered
+        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
+          m->shift = param->offset[i];
+          mSloppy->shift = param->offset[i];
+        }
 
-//         if (false) { // experimenting with Minimum residual extrapolation
-//                      // only perform MRE using current and previously refined solutions
-// #ifdef REFINE_INCREASING_MASS
-// 	  const int nRefine = i+1;
-// #else
-// 	  const int nRefine = param->num_offset - i + 1;
-// #endif
+        if (false) { // experimenting with Minimum residual extrapolation
+                     // only perform MRE using current and previously refined solutions
+#ifdef REFINE_INCREASING_MASS
+	  const int nRefine = i+1;
+#else
+	  const int nRefine = param->num_offset - i + 1;
+#endif
 
-//           cudaParam.create = QUDA_NULL_FIELD_CREATE;
-//           std::vector<ColorSpinorField> q(nRefine, cudaParam);
-//           std::vector<ColorSpinorField> z(nRefine, cudaParam);
+          cudaParam.create = QUDA_NULL_FIELD_CREATE;
+          std::vector<ColorSpinorField> q(nRefine, cudaParam);
+          std::vector<ColorSpinorField> z(nRefine, cudaParam);
 
-//           z[0] = x[0]; // zero solution already solved
-// #ifdef REFINE_INCREASING_MASS
-//           for (int j = 1; j < nRefine; j++) z[j] = x[j];
-// #else
-//           for (int j = 1; j < nRefine; j++) z[j] = x[param->num_offset - j];
-// #endif
+          z[0] = x[0]; // zero solution already solved
+#ifdef REFINE_INCREASING_MASS
+          for (int j = 1; j < nRefine; j++) z[j] = x[j];
+#else
+          for (int j = 1; j < nRefine; j++) z[j] = x[param->num_offset - j];
+#endif
 
-//           bool orthogonal = false;
-//           bool apply_mat = true;
-//           bool hermitian = true;
-//           MinResExt mre(*m, orthogonal, apply_mat, hermitian);
-//           mre(x[i], b, z, q);
-//         }
+          bool orthogonal = false;
+          bool apply_mat = true;
+          bool hermitian = true;
+          MinResExt mre(*m, orthogonal, apply_mat, hermitian);
+          mre(x[i], b, z, q);
+        }
 
-//         SolverParam solverParam(refineparam);
-//         solverParam.iter = 0;
-//         solverParam.use_init_guess = QUDA_USE_INIT_GUESS_YES;
-//         solverParam.tol = (param->tol_offset[i] > 0.0 ? param->tol_offset[i] : iter_tol); // set L2 tolerance
-//         solverParam.tol_hq = param->tol_hq_offset[i];                                     // set heavy quark tolerance
-//         solverParam.delta = param->reliable_delta_refinement;
+        SolverParam solverParam(refineparam);
+        solverParam.iter = 0;
+        solverParam.use_init_guess = QUDA_USE_INIT_GUESS_YES;
+        solverParam.tol = (param->tol_offset[i] > 0.0 ? param->tol_offset[i] : iter_tol); // set L2 tolerance
+        solverParam.tol_hq = param->tol_hq_offset[i];                                     // set heavy quark tolerance
+        solverParam.delta = param->reliable_delta_refinement;
 
-//         {
-//           CG cg(*m, *mSloppy, *mSloppy, *mSloppy, solverParam);
-//           if (i==0)
-//             cg(x[i], b, &p[i], r2_old[i]);
-//           else
-//             cg(x[i], b);
-//         }
+        {
+          CG cg(*m, *mSloppy, *mSloppy, *mSloppy, solverParam);
+          if (i == 0)
+            cg(x[i], b, p[i], r2_old[i]);
+          else
+            cg(x[i], b);
+        }
 
-//         solverParam.true_res_offset[i] = solverParam.true_res;
-//         solverParam.true_res_hq_offset[i] = solverParam.true_res_hq;
-//         solverParam.updateInvertParam(*param,i);
+        solverParam.true_res_offset[i] = static_cast<double>(solverParam.true_res);
+        solverParam.true_res_hq_offset[i] = static_cast<double>(solverParam.true_res_hq);
+        solverParam.updateInvertParam(*param,i);
 
-//         if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-//             param->dslash_type == QUDA_STAGGERED_DSLASH) {
-//           dirac.setMass(sqrt(param->offset[0]/4)); // restore just in case
-//           diracSloppy.setMass(sqrt(param->offset[0]/4)); // restore just in case
-//         }
+        if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
+            param->dslash_type == QUDA_STAGGERED_DSLASH) {
+          dirac.setMass(sqrt(param->offset[0]/4)); // restore just in case
+          diracSloppy.setMass(sqrt(param->offset[0]/4)); // restore just in case
+        }
 
-//         delete m;
-//         delete mSloppy;
-//       }
-//     }
-//   }
+        delete m;
+        delete mSloppy;
+      }
+    }
+  }
 
-//   // restore shifts
-//   for (int i = 0; i < param->num_offset; i++) param->offset[i] = unscaled_shifts[i];
+  // restore shifts
+  for (int i = 0; i < param->num_offset; i++) param->offset[i] = unscaled_shifts[i];
 
-//   if (param->compute_action) {
-//     Complex action(0);
-//     for (int i = 0; i < param->num_offset; i++) action += param->residue[i] * blas::cDotProduct(b, x[i]);
-//     param->action[0] = action.real();
-//     param->action[1] = action.imag();
-//   }
+  if (param->compute_action) {
+    Complex action(0);
+    for (int i = 0; i < param->num_offset; i++) action += param->residue[i] * blas::cDotProduct(b, x[i]);
+    param->action[0] = action.real();
+    param->action[1] = action.imag();
+  }
 
-//   for(int i=0; i < param->num_offset; i++) {
-//     if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { // rescale the solution
-//       blas::ax(sqrt(nb), x[i]);
-//     }
+  for(int i=0; i < param->num_offset; i++) {
+    if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { // rescale the solution
+      blas::ax(sqrt(nb), x[i]);
+    }
 
-//     logQuda(QUDA_VERBOSE, "Solution %d = %g\n", i, blas::norm2(x[i]));
-//     if (!param->make_resident_solution) h_x[i] = x[i];
-//   }
+    logQuda(QUDA_VERBOSE, "Solution %d = %g\n", i, blas::norm2(x[i]));
+    if (!param->make_resident_solution) h_x[i] = x[i];
+  }
 
-//   profileMulti.TPSTART(QUDA_PROFILE_EPILOGUE);
+  profileMulti.TPSTART(QUDA_PROFILE_EPILOGUE);
 
-//   if (!param->make_resident_solution) solutionResident.clear();
+  if (!param->make_resident_solution) solutionResident.clear();
 
-//   profileMulti.TPSTOP(QUDA_PROFILE_EPILOGUE);
+  profileMulti.TPSTOP(QUDA_PROFILE_EPILOGUE);
 
-//   delete d;
-//   delete dSloppy;
-//   delete dPre;
-//   delete dRefine;
+  delete d;
+  delete dSloppy;
+  delete dPre;
+  delete dRefine;
 
-//   // cache is written out even if a long benchmarking job gets interrupted
-//   saveTuneCache();
-
-//   profilerStop(__func__);
-//   popVerbosity();
-// }
+  profilerStop(__func__);
+  popVerbosity();
+}
 
 void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
 {
@@ -5266,432 +4876,6 @@ void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param
             x[i] = out_high[i];
           }
         }
-      }
-    }
-  }
-
-  // restore shifts
-  for (int i = 0; i < param->num_offset; i++) param->offset[i] = unscaled_shifts[i];
-
-  if (param->compute_action) {
-    Complex action(0);
-    for (int i = 0; i < param->num_offset; i++) action += param->residue[i] * blas::cDotProduct(b, x[i]);
-    param->action[0] = action.real();
-    param->action[1] = action.imag();
-  }
-
-  for(int i=0; i < param->num_offset; i++) {
-    if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { // rescale the solution
-      blas::ax(sqrt(nb), x[i]);
-    }
-
-    logQuda(QUDA_VERBOSE, "Solution %d = %g\n", i, blas::norm2(x[i]));
-    if (!param->make_resident_solution) h_x[i] = x[i];
-  }
-
-  profileMulti.TPSTART(QUDA_PROFILE_EPILOGUE);
-
-  if (!param->make_resident_solution) solutionResident.clear();
-
-  profileMulti.TPSTOP(QUDA_PROFILE_EPILOGUE);
-
-  delete d;
-  delete dSloppy;
-  delete dPre;
-  delete dRefine;
-
-  profilerStop(__func__);
-  popVerbosity();
-}
-
-/*!
- * Generic version of the multi-shift solver. Should work for
- * most fermions. Note that offset[0] is not folded into the mass parameter.
- *
- * For Wilson-type fermions, the solution_type must be MATDAG_MAT or MATPCDAG_MATPC,
- * and solve_type must be NORMOP or NORMOP_PC. The solution and solve
- * preconditioning have to match.
- *
- * For Staggered-type fermions, the solution_type must be MATPC, and the
- * solve type must be DIRECT_PC. This difference in convention is because
- * preconditioned staggered operator is normal, unlike with Wilson-type fermions.
- */
-void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
-{
-  auto profile = pushProfile(profileMulti, param);
-  profilerStart(__func__);
-
-  if (!initialized) errorQuda("QUDA not initialized");
-
-  checkInvertParam(param, hp_x[0], hp_b);
-
-  // check the gauge fields have been created
-  checkGauge(param);
-
-  if (param->num_offset > QUDA_MAX_MULTI_SHIFT)
-    errorQuda("Number of shifts %d requested greater than QUDA_MAX_MULTI_SHIFT %d", param->num_offset,
-              QUDA_MAX_MULTI_SHIFT);
-
-  pushVerbosity(param->verbosity);
-
-  bool pc_solution = (param->solution_type == QUDA_MATPC_SOLUTION) || (param->solution_type == QUDA_MATPCDAG_MATPC_SOLUTION);
-  bool pc_solve = (param->solve_type == QUDA_DIRECT_PC_SOLVE) || (param->solve_type == QUDA_NORMOP_PC_SOLVE);
-  bool mat_solution = (param->solution_type == QUDA_MAT_SOLUTION) || (param->solution_type ==  QUDA_MATPC_SOLUTION);
-  bool direct_solve = (param->solve_type == QUDA_DIRECT_SOLVE) || (param->solve_type == QUDA_DIRECT_PC_SOLVE);
-
-  param->iter = 0;
-
-  for (int i=0; i<param->num_offset-1; i++) {
-    for (int j=i+1; j<param->num_offset; j++) {
-      if (param->offset[i] > param->offset[j])
-        errorQuda("Offsets must be ordered from smallest to largest");
-    }
-  }
-
-  if (param->distance_pc_alpha0 != 0.0 && param->distance_pc_t0 >= 0) {
-    errorQuda("Multi-shift solver does not support distance preconditioning");
-  }
-
-  Dirac *d = nullptr;
-  Dirac *dSloppy = nullptr;
-  Dirac *dPre = nullptr;
-  Dirac *dRefine = nullptr;
-
-  // Create the dirac operator and a sloppy, precon, and refine.
-  createDiracWithRefine(d, dSloppy, dPre, dRefine, *param, pc_solve);
-  Dirac &dirac = *d;
-  Dirac &diracSloppy = *dSloppy;
-  dirac.prefetch(QUDA_CUDA_FIELD_LOCATION);
-  diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
-
-  std::vector<double> r2_old(param->num_offset);
-
-  // Grab the dimension array of the input gauge field.
-  const auto X = (param->dslash_type == QUDA_ASQTAD_DSLASH) ? gaugeFatPrecise->X() : gaugePrecise->X();
-
-  // This creates a ColorSpinorParam struct, from the host data
-  // pointer, the definitions in param, the dimensions X, and whether
-  // the solution is on a checkerboard instruction or not. These can
-  // then be used as 'instructions' to create the actual
-  // ColorSpinorField
-  ColorSpinorParam cpuParam(hp_b, *param, X, pc_solution, param->input_location);
-  ColorSpinorField h_b(cpuParam);
-
-  std::vector<ColorSpinorField> h_x;
-  h_x.resize(param->num_offset);
-
-  cpuParam.location = param->output_location;
-  for(int i=0; i < param->num_offset; i++) {
-    cpuParam.v = hp_x[i];
-    h_x[i] = ColorSpinorField(cpuParam);
-  }
-
-  // Now I need a colorSpinorParam for the device
-  ColorSpinorParam cudaParam(cpuParam, *param, QUDA_CUDA_FIELD_LOCATION);
-  // This setting will download a host vector
-  cudaParam.create = QUDA_COPY_FIELD_CREATE;
-  cudaParam.field = &h_b;
-  ColorSpinorField b(cudaParam); // Creates b and downloads h_b to it
-
-  // Create the solution fields filled with zero
-  cudaParam.create = QUDA_ZERO_FIELD_CREATE;
-
-  // now check if we need to invalidate the solution vectors
-  for (auto &v : solutionResident) {
-    if (cudaParam.Precision() != v.Precision()) {
-      solutionResident.clear();
-      break;
-    }
-  }
-
-  // grow/shrink resident solutions to be correct size
-  auto old_size = solutionResident.size();
-  solutionResident.resize(param->num_offset);
-  for (auto i = old_size; i < solutionResident.size(); i++) solutionResident[i] = ColorSpinorField(cudaParam);
-
-  std::vector<ColorSpinorField> &x = solutionResident;
-  std::vector<ColorSpinorField> p;
-
-  profileMulti.TPSTART(QUDA_PROFILE_PREAMBLE);
-
-  // Check source norms
-  double nb = blas::norm2(b);
-  if (nb==0.0) errorQuda("Source has zero norm");
-  logQuda(QUDA_VERBOSE, "Source: %g\n", nb);
-
-  // rescale the source vector to help prevent the onset of underflow
-  if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { blas::ax(1.0 / sqrt(nb), b); }
-
-  // backup shifts
-  double unscaled_shifts[QUDA_MAX_MULTI_SHIFT];
-  for (int i = 0; i < param->num_offset; i++) { unscaled_shifts[i] = param->offset[i]; }
-
-  // rescale
-  massRescale(b, *param, true);
-  profileMulti.TPSTOP(QUDA_PROFILE_PREAMBLE);
-
-  printfQuda("===============Pre-setttings for the chiral overlap operator===============\n");
-  DiracParam diracOvParam;
-  setDiracParam(diracOvParam, param, pc_solve);
-  GaugeField *cudaGauge = checkGauge(param);
-  // 为每个 DiracChiralOverlap 创建独立的 DiracOverlap 实例
-  DiracOverlap *dirac_ov_d = new DiracOverlap(diracOvParam);
-  DiracOverlap *dirac_ov_s = new DiracOverlap(diracOvParam);
-  DiracOverlap *dirac_ov_p = new DiracOverlap(diracOvParam);
-  DiracOverlap *dirac_ov_e = new DiracOverlap(diracOvParam);
-  const int n_eig = param->hermitian_wilson_n_ev;
-  const double invsqrt_tol = param->overlap_invsqrt_tol;
-  std::vector<ColorSpinorField> evecs(n_eig);
-  std::vector<Complex> evals(n_eig);
-  setupHermitianWilson(param, cudaGauge->X(), evecs, evals);
-  dirac_ov_d->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-  dirac_ov_s->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-  dirac_ov_p->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-  dirac_ov_e->setupHermitianWilson(n_eig, evecs, evals, invsqrt_tol);
-  ((DiracChiralOverlap*)d)->setOverlap(dirac_ov_d);
-  ((DiracChiralOverlap*)dSloppy)->setOverlap(dirac_ov_s);
-  ((DiracChiralOverlap*)dPre)->setOverlap(dirac_ov_p);
-  ((DiracChiralOverlap*)dRefine)->setOverlap(dirac_ov_e);
-
-  const double rho = 4.0 - 1.0 / (2.0 * (param->kappa));
-  // const double rho = 1.5;
-  double *masses = static_cast<double*>(param->ov_masses);
-
-  // 加载 overlap 低模部分特征系统
-  Complex *evals_ov;
-  Complex **evecs_ov;
-  int n_low = 0;
-
-  if(param->ov_n_ev > 0 && param->ov_eigvals != NULL && param->ov_eigvecs != NULL){
-    n_low = param->ov_n_ev;
-    evals_ov = static_cast<Complex*>(param->ov_eigvals);
-    evecs_ov = reinterpret_cast<Complex**>(param->ov_eigvecs);
-  } else {
-    printfQuda("No overlap eigensystem loaded.\n");
-    // errorQuda("No overlap eigensystem loaded");
-  }
-  
-  ColorSpinorParam gpuParam(b);
-  gpuParam.create = QUDA_COPY_FIELD_CREATE;
-
-  std::vector<ColorSpinorField> gpu_evecs(n_low);
-  {
-    ColorSpinorParam tmpParam(nullptr, *param, gpuParam.x, false, QUDA_CPU_FIELD_LOCATION);
-    tmpParam.setPrecision(gpuParam.Precision());
-    tmpParam.create = QUDA_REFERENCE_FIELD_CREATE;
-    
-    for(int i = 0; i < n_low; i++) {
-      tmpParam.v = evecs_ov[i];
-      
-      ColorSpinorField cpu_ref(tmpParam);
-      gpuParam.field = &cpu_ref;
-      gpuParam.create = QUDA_COPY_FIELD_CREATE;
-      gpu_evecs[i] = ColorSpinorField(gpuParam);
-    }
-  }
-
-  // deflate source
-  ColorSpinorField in_def(cudaParam);
-  blas::copy(in_def, b);
-  {
-    printfQuda("===============deflate source===============\n");
-    for(int i = 0; i < n_low; i++){
-      Complex alpha = blas::cDotProduct(gpu_evecs[i], in_def);
-      blas::caxpy(-alpha, gpu_evecs[i], in_def);
-
-      ColorSpinorField gamma5_evec(cudaParam);
-      blas::zero(gamma5_evec);
-      {
-        cvector_ref<ColorSpinorField> out_vec(gamma5_evec);
-        cvector_ref<const ColorSpinorField> in_vec(gpu_evecs[i]);
-        gamma5(out_vec, in_vec);
-      }
-      alpha = blas::cDotProduct(gamma5_evec, in_def);
-      blas::caxpy(-alpha, gamma5_evec, in_def);
-    }
-  }
-
-  // high-mode propagator
-  std::vector<ColorSpinorField> out_high(param->num_offset);
-  for (auto &v : out_high) {
-    v = ColorSpinorField(cudaParam);
-  }
-  {
-    printfQuda("===============Compute high-mode propagator===============\n");
-    ColorSpinorParam chiParam(b);
-    ColorSpinorParam fullParam(b);
-    chiParam.nSpin = 2;
-    chiParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-    chiParam.create = QUDA_ZERO_FIELD_CREATE;
-    fullParam.create = QUDA_ZERO_FIELD_CREATE;
-
-    ColorSpinorField in_def_L(chiParam);
-    ColorSpinorField in_def_R(chiParam);
-    spinorChiralProject(in_def_L, in_def, QUDA_CHIRALITY_UPPER);
-    spinorChiralProject(in_def_R, in_def, QUDA_CHIRALITY_LOWER);
-    double norm2_in_def_L = blas::norm2(in_def_L);
-    double norm2_in_def_R = blas::norm2(in_def_R);
-    printfQuda("norm2_in_def_L = %e\n", norm2_in_def_L);
-    printfQuda("norm2_in_def_R = %e\n", norm2_in_def_R);
-    bool flag_left = false, flag_right = false;
-    if (norm2_in_def_L > 1e-6) {
-      flag_left = true;
-    }
-    if (norm2_in_def_R > 1e-6) {
-      flag_right = true;
-    }
-
-    std::vector<ColorSpinorField> out_L(param->num_offset);
-    for(auto &v : out_L){
-      v = ColorSpinorField(chiParam);
-    }
-    std::vector<ColorSpinorField> out_R(param->num_offset);
-    for(auto &v: out_R){
-      v = ColorSpinorField(chiParam);
-    }
-    std::vector<ColorSpinorField> out_L_full(param->num_offset);
-    for(auto &v: out_L_full){
-      v = ColorSpinorField(fullParam);
-    }
-    std::vector<ColorSpinorField> out_R_full(param->num_offset);
-    for(auto &v: out_R_full){
-      v = ColorSpinorField(fullParam);
-    }
-    std::vector<ColorSpinorField> out_full(param->num_offset);
-    for(auto &v: out_full){
-      v = ColorSpinorField(fullParam);
-    }
-
-    double zero_shift = (masses[0] * masses[0]) / (1 - (masses[0] * masses[0]) / (4 * rho * rho));
-    // double zero_shift = 0.0;
-
-    if (flag_left){
-      printfQuda("===============Compute Left===============\n");
-      ((DiracChiralOverlap*)d)->setChirality(QUDA_CHIRALITY_UPPER);
-      ((DiracChiralOverlap*)d)->setZeroShift(zero_shift);
-      ((DiracChiralOverlap*)dSloppy)->setChirality(QUDA_CHIRALITY_UPPER);
-      ((DiracChiralOverlap*)dSloppy)->setZeroShift(zero_shift);
-
-      DiracMatrix *m_L, *mSloppy_L;
-      m_L = new DiracMdagM(dirac);
-      mSloppy_L = new DiracMdagM(diracSloppy);
-      SolverParam solverParam_L(*param);
-      MultiShiftCG cg_m_L(*m_L, *mSloppy_L, solverParam_L);
-      cg_m_L(out_L, in_def_L, p, r2_old);
-      solverParam_L.updateInvertParam(*param);
-      for (int i = 0; i < (param->num_offset); i++){
-        spinorChiralEmbed(out_L_full[i], out_L[i], QUDA_CHIRALITY_UPPER);
-      }
-
-      delete m_L;
-      delete mSloppy_L;
-    }
-
-    if (flag_right) {
-      printfQuda("===============Compute Right===============\n");
-      ((DiracChiralOverlap*)d)->setChirality(QUDA_CHIRALITY_LOWER);
-      ((DiracChiralOverlap*)d)->setZeroShift(zero_shift);
-      ((DiracChiralOverlap*)dSloppy)->setChirality(QUDA_CHIRALITY_LOWER);
-      ((DiracChiralOverlap*)dSloppy)->setZeroShift(zero_shift);
-
-      DiracMatrix *m_R, *mSloppy_R;
-      m_R = new DiracMdagM(dirac);
-      mSloppy_R = new DiracMdagM(diracSloppy); 
-      SolverParam solverParam_R(*param);
-      MultiShiftCG cg_m_R(*m_R, *mSloppy_R, solverParam_R);
-      cg_m_R(out_R, in_def_R, p, r2_old);
-      solverParam_R.updateInvertParam(*param);
-      for (int i = 0; i < (param->num_offset); i++){
-        spinorChiralEmbed(out_R_full[i], out_R[i], QUDA_CHIRALITY_LOWER);
-      }
-    
-      delete m_R;
-      delete mSloppy_R;
-    }
-
-    // merge Left and Right
-    for (int i = 0; i < (param->num_offset); i++){
-      blas::axpbyz(1.0, out_L_full[i], 1.0, out_R_full[i], out_full[i]);
-    }
-
-    // recale solutions
-    for (int i = 0; i < (param->num_offset); i++){
-      blas::ax(1.0 / (1.0 - (masses[i] * masses[i]) / (4.0 * rho * rho)), out_full[i]);
-    }
-
-    // D^dagger out
-    for (int i = 0; i < (param->num_offset); i++){
-      ((DiracChiralOverlap*)d)->Mdag(out_high[i], out_full[i]);
-    }
-
-    for (int i = 0; i < (param->num_offset); i++){
-      blas::axpby(masses[i], out_full[i], 1.0 - (masses[i] / (2.0 * rho)), out_high[i]);
-    }
-
-    // 1 - 1/2\rho D
-    for (int i = 0; i < (param->num_offset); i++){
-      blas::axpby(-1.0 / (2.0 * rho - masses[i]), in_def, rho / (rho - (masses[i] / 2.0)), out_high[i]);
-    }
-  }
-
-  // merge low-mode and high-mode propagator
-  for (int i = 0; i < (param->num_offset); i++){
-    blas::axpby(1.0, out_high[i], 1.0, x[i]);
-  }
-
-  if (param->compute_true_res) {
-    // check each shift has the desired tolerance and use sequential CG to refine
-    cudaParam.create = QUDA_ZERO_FIELD_CREATE;
-    ColorSpinorField r(cudaParam);
-    QudaInvertParam refineparam = *param;
-    refineparam.cuda_prec_sloppy = param->cuda_prec_refinement_sloppy;
-    Dirac &dirac = *d;
-    Dirac &diracSloppy = *dRefine;
-    diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
-
-    for(int i=0; i < param->num_offset; i++) {
-      
-      double rsd_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ?
-	                    param->true_res_hq_offset[i] : 0;
-      double tol_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ?
-	                    param->tol_hq_offset[i] : 0;
-
-      /*
-      In the case where the shifted systems have zero tolerance
-      specified, we refine these systems until either the limit of
-      precision is reached (prec_tol) or until the tolerance reaches
-      the iterated residual tolerance of the previous multi-shift
-      solver (iter_res_offset[i]), which ever is greater.
-      */
-      const double prec_tol = std::pow(10.,(-2*(int)param->cuda_prec+4)); // implicit refinment limit of 1e-12
-      const double iter_tol = (param->iter_res_offset[i] < prec_tol ? prec_tol : (param->iter_res_offset[i] *1.1));
-      const double refine_tol = (param->tol_offset[i] == 0.0 ? iter_tol : param->tol_offset[i]);
-      // refine if either L2 or heavy quark residual tolerances have not been met, only if desired residual is > 0
-      if (param->true_res_offset[i] > refine_tol || rsd_hq > tol_hq) {
-        logQuda(QUDA_SUMMARIZE, "Refining shift %d: L2 residual %e / %e, heavy quark %e / %e (actual / requested)\n", i,
-                param->true_res_offset[i], param->tol_offset[i], rsd_hq, tol_hq);
-
-        // high-mode propagator
-        {
-          CG cg(*m, *mSloppy, *mSloppy, *mSloppy, solverParam);
-          if (i == 0)
-            cg(x[i], b, p[i], r2_old[i]);
-          else
-            cg(x[i], b);
-        }
-
-        solverParam.true_res_offset[i] = static_cast<double>(solverParam.true_res);
-        solverParam.true_res_hq_offset[i] = static_cast<double>(solverParam.true_res_hq);
-        solverParam.updateInvertParam(*param,i);
-
-        if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-            param->dslash_type == QUDA_STAGGERED_DSLASH) {
-          dirac.setMass(sqrt(param->offset[0]/4)); // restore just in case
-          diracSloppy.setMass(sqrt(param->offset[0]/4)); // restore just in case
-        }
-
-        delete m;
-        delete mSloppy;
       }
     }
   }
