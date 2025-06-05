@@ -99,6 +99,7 @@ namespace quda {
 
   void DiracMobius::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     checkFullSpinor(out, in);
 
     // zMobius breaks the following code. Refer to the zMobius check in DiracMobius::DiracMobius(param)
@@ -121,6 +122,7 @@ namespace quda {
 
   void DiracMobius::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     checkFullSpinor(out, in);
     auto tmp = getFieldTmp(out);
 
@@ -136,10 +138,8 @@ namespace quda {
       errorQuda("Preconditioned solution requires a preconditioned solve_type");
     }
 
-    for (auto i = 0u; i < b.size(); i++) {
-      src[i] = const_cast<ColorSpinorField &>(b[i]).create_alias();
-      sol[i] = x[i].create_alias();
-    }
+    create_alias(src, b);
+    create_alias(sol, x);
   }
 
   void DiracMobius::reconstruct(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &,
@@ -270,6 +270,7 @@ namespace quda {
   // Actually, Dslash5 will return M5 operation and M5 = 1 + 0.5*kappa_b/kappa_c * D5
   void DiracMobiusPC::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     auto tmp = getFieldTmp(out);
 
     // QUDA_MATPC_EVEN_EVEN_ASYMMETRIC : M5 - kappa_b^2 * D4_{eo}D4pre_{oe}D5inv_{ee}D4_{eo}D4pre_{oe}
@@ -330,6 +331,7 @@ namespace quda {
 
   void DiracMobiusPC::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     bool symmetric = (matpcType == QUDA_MATPC_EVEN_EVEN || matpcType == QUDA_MATPC_ODD_ODD) ? true : false;
     auto tmp2 = getFieldTmp(out);
 
@@ -354,6 +356,7 @@ namespace quda {
 
   void DiracMobiusPC::MMdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     auto tmp = getFieldTmp(out);
     Mdag(tmp, in);
     M(out, tmp);
@@ -364,53 +367,47 @@ namespace quda {
                               const QudaSolutionType solType) const
   {
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) {
-      for (auto i = 0u; i < b.size(); i++) {
-        src[i] = const_cast<ColorSpinorField &>(b[i]).create_alias();
-        sol[i] = x[i].create_alias();
-      }
+      create_alias(src, b);
+      create_alias(sol, x);
       return;
     }
 
+    create_alias(src, x(other_parity));
+    create_alias(sol, x(this_parity));
+
     // we desire solution to full system
-    auto tmp = getFieldTmp(x[0].Even());
-    for (auto i = 0u; i < b.size(); i++) {
-      if (symmetric) {
-        // src = D5^-1 (b_e + k D4_eo * D4pre * D5^-1 b_o)
-        src[i] = x[i][other_parity].create_alias();
-        M5inv(tmp, b[i][other_parity]);
-        Dslash4pre(src[i], tmp);
-        Dslash4Xpay(tmp, src[i], this_parity, b[i][this_parity], 1.0);
-        M5inv(src[i], tmp);
-        sol[i] = x[i][this_parity].create_alias();
-      } else {
-        // src = b_e + k D4_eo * D4pre * D5inv b_o
-        src[i] = x[i][other_parity].create_alias();
-        M5inv(src[i], b[i][other_parity]);
-        Dslash4pre(tmp, src[i]);
-        Dslash4Xpay(src[i], tmp, this_parity, b[i][this_parity], 1.0);
-        sol[i] = x[i][this_parity].create_alias();
-      }
+    auto tmp = getFieldTmp(x.Even());
+    if (symmetric) {
+      // src = D5^-1 (b_e + k D4_eo * D4pre * D5^-1 b_o)
+      M5inv(tmp, b(other_parity));
+      Dslash4pre(src, tmp);
+      Dslash4Xpay(tmp, src, this_parity, b(this_parity), 1.0);
+      M5inv(src, tmp);
+    } else {
+      // src = b_e + k D4_eo * D4pre * D5inv b_o
+      M5inv(src, b(other_parity));
+      Dslash4pre(tmp, src);
+      Dslash4Xpay(src, tmp, this_parity, b(this_parity), 1.0);
     }
   }
 
   void DiracMobiusPC::reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
                                   const QudaSolutionType solType) const
   {
-    if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) { return; }
+    if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) return;
 
     // create full solution
-    auto tmp = getFieldTmp(x[0].Even());
-    for (auto i = 0u; i < b.size(); i++) {
-      checkFullSpinor(x[i], b[i]);
-      // psi_o = M5^-1 (b_o + k_b D4_oe D4pre x_e)
-      Dslash4pre(x[i][other_parity], x[i][this_parity]);
-      Dslash4Xpay(tmp, x[i][other_parity], other_parity, b[i][other_parity], 1.0);
-      M5inv(x[i][other_parity], tmp);
-    }
+    auto tmp = getFieldTmp(x.Even());
+    checkFullSpinor(x, b);
+    // psi_o = M5^-1 (b_o + k_b D4_oe D4pre x_e)
+    Dslash4pre(x(other_parity), x(this_parity));
+    Dslash4Xpay(tmp, x(other_parity), other_parity, b(other_parity), 1.0);
+    M5inv(x(other_parity), tmp);
   }
 
   void DiracMobiusPC::MdagMLocal(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     if (zMobius) errorQuda("DiracMobiusPC::MdagMLocal doesn't currently support zMobius");
 
     lat_dim_t shift0 = {0, 0, 0, 0};
@@ -554,6 +551,7 @@ namespace quda {
 
   void DiracMobiusEofa::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     checkFullSpinor(out, in);
 
     // FIXME broken for variable coefficients
@@ -577,6 +575,7 @@ namespace quda {
 
   void DiracMobiusEofa::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     checkFullSpinor(out, in);
     auto tmp = getFieldTmp(out);
 
@@ -592,10 +591,8 @@ namespace quda {
       errorQuda("Preconditioned solution requires a preconditioned solve_type");
     }
 
-    for (auto i = 0u; i < b.size(); i++) {
-      src[i] = const_cast<ColorSpinorField &>(b[i]).create_alias();
-      sol[i] = x[i].create_alias();
-    }
+    create_alias(src, b);
+    create_alias(sol, x);
   }
 
   void DiracMobiusEofa::reconstruct(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &,
@@ -636,6 +633,7 @@ namespace quda {
   // Apply the even-odd preconditioned mobius DWF EOFA operator
   void DiracMobiusEofaPC::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     auto tmp = getFieldTmp(out);
 
     // QUDA_MATPC_EVEN_EVEN_ASYMMETRIC : M5 - kappa_b^2 * D4_{eo}D4pre_{oe}D5inv_{ee}D4_{eo}D4pre_{oe}
@@ -676,32 +674,27 @@ namespace quda {
                                   const QudaSolutionType solType) const
   {
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) {
-      for (auto i = 0u; i < b.size(); i++) {
-        src[i] = const_cast<ColorSpinorField &>(b[i]).create_alias();
-        sol[i] = x[i].create_alias();
-      }
+      create_alias(src, b);
+      create_alias(sol, x);
       return;
     }
 
+    create_alias(src, x(other_parity));
+    create_alias(sol, x(this_parity));
+
     // we desire solution to full system
-    auto tmp = getFieldTmp(x[0].Even());
-    for (auto i = 0u; i < b.size(); i++) {
-      if (symmetric) {
-        // src = D5^-1 (b_e + k D4_eo * D4pre * D5^-1 b_o)
-        src[i] = x[i][other_parity].create_alias();
-        m5inv_eofa(tmp, b[i][other_parity]);
-        Dslash4pre(src[i], tmp);
-        Dslash4Xpay(tmp, src[i], this_parity, b[i][this_parity], 1.0);
-        m5inv_eofa(src[i], tmp);
-        sol[i] = x[i][this_parity].create_alias();
-      } else if (matpcType == QUDA_MATPC_EVEN_EVEN_ASYMMETRIC) {
-        // src = b_e + k D4_eo * D4pre * D5inv b_o
-        src[i] = x[i][other_parity].create_alias();
-        m5inv_eofa(src[i], b[i][other_parity]);
-        Dslash4pre(tmp, src[i]);
-        Dslash4Xpay(src[i], tmp, this_parity, b[i][this_parity], 1.0);
-        sol[i] = x[i][this_parity].create_alias();
-      }
+    auto tmp = getFieldTmp(x.Even());
+    if (symmetric) {
+      // src = D5^-1 (b_e + k D4_eo * D4pre * D5^-1 b_o)
+      m5inv_eofa(tmp, b(other_parity));
+      Dslash4pre(src, tmp);
+      Dslash4Xpay(tmp, src, this_parity, b(this_parity), 1.0);
+      m5inv_eofa(src, tmp);
+    } else if (matpcType == QUDA_MATPC_EVEN_EVEN_ASYMMETRIC) {
+      // src = b_e + k D4_eo * D4pre * D5inv b_o
+      m5inv_eofa(src, b(other_parity));
+      Dslash4pre(tmp, src);
+      Dslash4Xpay(src, tmp, this_parity, b(this_parity), 1.0);
     }
   }
 
@@ -711,18 +704,17 @@ namespace quda {
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) return;
 
     // create full solution
-    auto tmp = getFieldTmp(x[0].Even());
-    for (auto i = 0u; i < b.size(); i++) {
-      checkFullSpinor(x[i], b[i]);
-      // psi_o = M5^-1 (b_o + k_b D4_oe D4pre x_e)
-      Dslash4pre(x[i][other_parity], x[i][this_parity]);
-      Dslash4Xpay(tmp, x[i][other_parity], other_parity, b[i][other_parity], 1.0);
-      m5inv_eofa(x[i][other_parity], tmp);
-    }
+    auto tmp = getFieldTmp(x.Even());
+    checkFullSpinor(x, b);
+    // psi_o = M5^-1 (b_o + k_b D4_oe D4pre x_e)
+    Dslash4pre(x(other_parity), x(this_parity));
+    Dslash4Xpay(tmp, x(other_parity), other_parity, b(other_parity), 1.0);
+    m5inv_eofa(x(other_parity), tmp);
   }
 
   void DiracMobiusEofaPC::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     auto tmp = getFieldTmp(out);
     M(tmp, in);
     Mdag(out, tmp);
@@ -731,6 +723,7 @@ namespace quda {
   // ye = Mee * xe + Meo * xo, yo = Moo * xo + Moe * xe
   void DiracMobiusEofaPC::full_dslash(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
+    assertNoDD(out, in); // TODO: DD not supported yet
     checkFullSpinor(out, in);
     auto tmp1 = getFieldTmp(out);
     auto tmp2 = getFieldTmp(out);

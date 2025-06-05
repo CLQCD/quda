@@ -7,6 +7,7 @@
 #include <enum_quda.h>
 #include <util_quda.h>
 #include <quda_internal.h>
+#include <domain_decomposition.h>
 
 namespace quda
 {
@@ -246,11 +247,8 @@ namespace quda
        @param[in] first Begin iterator
        @param[in] last End iterator
      */
-    template <class U, std::enable_if_t<is_iterator_v<U>>* = nullptr>
-    vector_ref(U first, U last)
+    template <class U, std::enable_if_t<is_iterator_v<U>> * = nullptr> vector_ref(U first, U last) : vector(first, last)
     {
-      vector::reserve(last - first);
-      for (auto it = first; it != last; it++) vector::push_back(*it);
     }
 
     /**
@@ -379,6 +377,15 @@ namespace quda
     }
 
     template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, int> full_dim(int d) const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).full_dim(d) != operator[](i).full_dim(d))
+          errorQuda("Dimension %d does not match %d != %d", d, operator[](i - 1).full_dim(d), operator[](i).full_dim(d));
+      return operator[](0).full_dim(d);
+    }
+
+    template <class U = T>
     std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, size_t> Length() const
     {
       for (auto i = 1u; i < vector::size(); i++)
@@ -462,6 +469,25 @@ namespace quda
     {
       return operator[](0).AuxString();
     }
+
+    template <class U = T>
+    std::enable_if_t<std::is_same_v<std::remove_const_t<U>, ColorSpinorField>, const DDParam> DD() const
+    {
+      for (auto i = 1u; i < vector::size(); i++)
+        if (operator[](i - 1).DD() != operator[](i).DD()) errorQuda("DD do not match %d != %d", i - 1, i);
+      return operator[](0).DD();
+    }
+
+    template <class U = T, typename... Args>
+    std::enable_if_t<std::is_same_v<U, ColorSpinorField>, void> DD(const quda::DD &flag, const Args &...args)
+    {
+      for (auto i = 0u; i < vector::size(); i++) operator[](i).DD(flag, args...);
+    }
+
+    template <class U = T, typename... Args> std::enable_if_t<std::is_same_v<U, ColorSpinorField>, void> projectDD()
+    {
+      for (auto i = 0u; i < vector::size(); i++) operator[](i).projectDD();
+    }
   };
 
   template <class T> using cvector_ref = const vector_ref<T>;
@@ -489,6 +515,16 @@ namespace quda
 
     vector() = default;
     vector(uint64_t size, const T &value = {}) : std::vector<T>(size, value) { }
+
+    /**
+       Constructor from pair of iterators
+       @param[in] first Begin iterator
+       @param[in] last End iterator
+     */
+    template <class U, std::enable_if_t<is_iterator_v<U>> * = nullptr>
+    vector(U first, U last) : std::vector<T>(first, last)
+    {
+    }
 
     /**
        @brief Constructor using std::vector initialization
@@ -530,12 +566,42 @@ namespace quda
     /**
        @brief Cast to scalar.  Only works if the vector size is 1.
     */
-    operator T() const
+    explicit operator T() const
     {
       if (std::vector<T>::size() != 1) errorQuda("Cast to scalar failed since size = %lu", std::vector<T>::size());
       return std::vector<T>::operator[](0);
     }
+
+    bool operator<(const vector<T> &v) const
+    {
+      for (auto i = 0u; i < v.size(); i++)
+        if (this->operator[](i) >= v[i]) return false;
+      return true;
+    }
+
+    bool operator>(const vector<T> &v) const
+    {
+      for (auto i = 0u; i < v.size(); i++)
+        if (this->operator[](i) <= v[i]) return false;
+      return true;
+    }
+
+    vector<T> operator-() const
+    {
+      vector<T> negative(*this);
+      for (auto &v : negative) v = -v;
+      return negative;
+    }
+
+    vector<T> operator*(const T &u) const
+    {
+      vector<T> multiplied(*this);
+      for (auto &v : multiplied) v *= u;
+      return multiplied;
+    }
   };
+
+  template <class T, class U> vector<U> operator*(const T &a, const vector<U> &b) { return b * a; }
 
   template <class T> using cvector = const vector<T>;
 

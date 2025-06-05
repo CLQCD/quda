@@ -11,13 +11,10 @@
 #include <shmem_pack_helper.cuh>
 #include <kernel_helper.h>
 #include <tune_quda.h>
+#include <domain_decomposition_helper.cuh>
+#include <kernel_ops.h>
 
-#if defined(_NVHPC_CUDA)
-#include <constant_kernel_arg.h>
-constexpr quda::use_kernel_arg_p use_kernel_arg = quda::use_kernel_arg_p::FALSE;
-#else
 constexpr quda::use_kernel_arg_p use_kernel_arg = quda::use_kernel_arg_p::TRUE;
-#endif
 
 #include <kernel.h>
 
@@ -100,10 +97,11 @@ namespace quda
      @return checkerboard space-time index
   */
   template <QudaPCType pc_type, KernelType kernel_type, typename Arg, int nface_ = 1>
-  __host__ __device__ inline auto getCoords(const Arg &arg, int &idx, int s, int parity, int &dim)
+  __host__ __device__ __forceinline__ auto getCoords(const Arg &arg, int &idx, int s, int parity, int &dim)
   {
     constexpr auto nDim = Arg::nDim;
     Coord<nDim> coord;
+    for (auto i = 0; i < nDim; i++) coord.gDim[i] = arg.gDim[i];
     dim = kernel_type; // keep compiler happy
 
     // only for 5-d checkerboarding where we need to include the fifth dimension
@@ -155,6 +153,7 @@ namespace quda
         coordsFromFaceIndex<nDim, pc_type, 3, nface_>(coord.X, coord.x_cb, coord, idx, face_num, parity, arg);
       }
     }
+    for (int i = 0; i < nDim; i++) { coord.gx[i] = arg.commCoord[i] + coord.x[i]; }
     coord.s = s;
     return coord;
   }
@@ -241,11 +240,12 @@ namespace quda
     return true;
   }
 
-  template <typename Float_, int nDim_> struct DslashArg {
+  template <typename Float_, int nDim_, typename DDArg, int n_src_tile_ = 1> struct DslashArg {
 
     using Float = Float_;
     using real = typename mapper<Float>::type;
     static constexpr int nDim = nDim_;
+    static constexpr int n_src_tile = n_src_tile_; // how many RHS per thread
 
     const int parity;  // only use this for single parity fields
     const int nParity; // number of parities we're working on
@@ -254,8 +254,12 @@ namespace quda
 
     const int_fastdiv X0h;
     const int_fastdiv dim[5]; // full lattice dimensions
+    const int gDim[5];        // global full lattice dimensions
     const int volumeCB;       // checkerboarded volume
     int commDim[4];           // whether a given dimension is partitioned or not (potentially overridden for Schwarz)
+
+    const int commCoord[5];
+    const int globalDim3;
 
     const bool dagger; // dagger
     const bool xpay;   // whether we are doing xpay or not
@@ -269,6 +273,7 @@ namespace quda
     int threadDimMapLower[4];
     int threadDimMapUpper[4];
 
+    int_fastdiv n_src;
     int_fastdiv Ls;
 
     // these are set with symmetric preconditioned twisted-mass dagger
@@ -285,6 +290,10 @@ namespace quda
     int pack_blocks; // total number of blocks used for packing in the dslash
     int exterior_dims; // dimension to run in the exterior Dslash
     int exterior_blocks;
+
+    DDArg dd_out;
+    DDArg dd_in;
+    DDArg dd_x;
 
     // for shmem ...
     static constexpr bool packkernel = false;
@@ -319,7 +328,10 @@ namespace quda
       reconstruct(U.Reconstruct()),
       X0h(nParity == 2 ? in.X(0) / 2 : in.X(0)),
       dim {(3 - nParity) * in.X(0), in.X(1), in.X(2), in.X(3), in.Ndim() == 5 ? in.X(4) : 1},
+      gDim {comm_dim(0) * dim[0], comm_dim(1) * dim[1], comm_dim(2) * dim[2], comm_dim(3) * dim[3], dim[4]},
       volumeCB(in.VolumeCB()),
+      commCoord {comm_coord(0) * dim[0], comm_coord(1) * dim[1], comm_coord(2) * dim[2], comm_coord(3) * dim[3], dim[4]},
+      globalDim3(comm_dim(3) * this->dim[3]),
       dagger(dagger),
       xpay(xpay),
       kernel_type(INTERIOR_KERNEL),
@@ -327,6 +339,7 @@ namespace quda
       exterior_threads(0),
       threadDimMapLower {},
       threadDimMapUpper {},
+      n_src(in.size()),
       Ls(halo.X(4) / in.size()),
       twist_a(0.0),
       twist_b(0.0),
@@ -338,6 +351,9 @@ namespace quda
       pack_blocks(0),
       exterior_dims(0),
       exterior_blocks(0),
+      dd_out(out.DD()),
+      dd_in(in.DD()),
+      dd_x(x.DD()),
 #ifndef NVSHMEM_COMMS
       counter(0)
 #else
@@ -356,10 +372,11 @@ namespace quda
         if (in[i].data() == out[i].data()) errorQuda("Aliasing pointers");
       checkOrder(out, in, x);        // check all orders match
       checkLocation(out, in, x, U);  // check all locations match
+      checkDD(out, in, x);           // check all DD match
       checkNative(in, U);
 
       for (int d = 0; d < 4; d++) {
-        commDim[d] = (comm_override[d] == 0) ? 0 : comm_dim_partitioned(d);
+        commDim[d] = (comm_override[d] == 0) ? 0 : (comm_dim_partitioned(d) * dd_out.commDim(d, dd_in, *this));
       }
 
       if (in.Location() == QUDA_CUDA_FIELD_LOCATION) {
@@ -415,7 +432,8 @@ namespace quda
     }
   };
 
-  template <typename Float, int nDim> std::ostream &operator<<(std::ostream &out, const DslashArg<Float, nDim> &arg)
+  template <typename Float, int nDim, typename DDArg>
+  std::ostream &operator<<(std::ostream &out, const DslashArg<Float, nDim, DDArg> &arg)
   {
     out << "parity = " << arg.parity << std::endl;
     out << "nParity = " << arg.nParity << std::endl;
@@ -452,6 +470,10 @@ namespace quda
     out << "pack_blocks = " << arg.pack_blocks << std::endl;
     out << "exterior_threads = " << arg.exterior_threads << std::endl;
     out << "exterior_blocks = " << arg.exterior_blocks << std::endl;
+    out << "dd_out: " << arg.dd_out << std::endl;
+    out << "dd_in: " << arg.dd_in << std::endl;
+    out << "dd_x: " << arg.dd_x << std::endl;
+
     return out;
   }
 
@@ -614,7 +636,7 @@ namespace quda
       while (local_tid < threads_my_dir) {
         // for full fields set parity from z thread index else use arg setting
         int parity = nParity == 2 ? target::block_dim().z * target::block_idx().z + target::thread_idx().z : arg.parity;
-#ifdef QUDA_DSLASH_FAST_COMPILE
+#ifdef QUDA_FAST_COMPILE_DSLASH
         dslash.template operator()<EXTERIOR_KERNEL_ALL>(tid, s, parity);
 #else
         switch (parity) {
@@ -650,8 +672,9 @@ namespace quda
     Arg arg;
 
     dslash_functor_arg(const Arg &arg, unsigned int threads_x) :
-      kernel_param(dim3(threads_x, arg.dc.Ls, arg.nParity)),
-      arg(arg) { }
+      kernel_param(dim3(threads_x, (arg.dc.Ls + Arg::n_src_tile - 1) / Arg::n_src_tile, arg.nParity)), arg(arg)
+    {
+    }
   };
 
   /**
@@ -661,17 +684,21 @@ namespace quda
     are reserved for data packing, which may include communication to
     neighboring processes.
    */
-  template <typename Arg> struct dslash_functor {
+  template <typename Arg> struct dslash_functor : getKernelOps<typename Arg::D> {
     const typename Arg::Arg &arg;
     static constexpr int nParity = Arg::nParity;
     static constexpr bool dagger = Arg::dagger;
     static constexpr KernelType kernel_type = Arg::kernel_type;
     static constexpr const char *filename() { return Arg::D::filename(); }
-    constexpr dslash_functor(const Arg &arg) : arg(arg.arg) { }
+    using typename getKernelOps<typename Arg::D>::KernelOpsT;
+    template <typename... OpsArgs>
+    constexpr dslash_functor(const Arg &arg, const OpsArgs &...ops) : KernelOpsT(ops...), arg(arg.arg)
+    {
+    }
 
     __forceinline__ __device__ void operator()(int, int s, int parity)
     {
-      typename Arg::D dslash(arg);
+      typename Arg::D dslash(*this);
       // for full fields set parity from z thread index else use arg setting
       if (nParity == 1) parity = arg.parity;
 
@@ -697,7 +724,7 @@ namespace quda
         int x_cb = (target::block_idx().x - dslash_block_offset) * target::block_dim().x + target::thread_idx().x;
         if (x_cb >= arg.threads) return;
 
-#ifdef QUDA_DSLASH_FAST_COMPILE
+#ifdef QUDA_FAST_COMPILE_DSLASH
         dslash.template operator()<kernel_type == UBER_KERNEL ? INTERIOR_KERNEL : kernel_type>(x_cb, s, parity);
 #else
         switch (parity) {

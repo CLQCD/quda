@@ -81,6 +81,8 @@ namespace quda {
       errorQuda("Cannot request a 12/8 reconstruct type without SU(3) link type");
     if (param.reconstruct == QUDA_RECONSTRUCT_10 && param.link_type != QUDA_ASQTAD_MOM_LINKS)
       errorQuda("10-reconstruction only supported with momentum links");
+    if (param.nFace > x[0] || param.nFace > x[1] || param.nFace > x[2] || param.nFace > x[3])
+      errorQuda("Halo depth %d is greater than local lattice x = {%d %d %d %d}", param.nFace, x[0], x[1], x[2], x[3]);
 
     nColor = param.nColor;
     nFace = param.nFace;
@@ -1355,7 +1357,7 @@ namespace quda {
       qudaMemcpy(buffer, data(), Bytes(), qudaMemcpyDeviceToHost);
     } else {
       if (is_pointer_array(order)) {
-        char *dst_buffer = reinterpret_cast<char *>(buffer);
+        char *dst_buffer = static_cast<char *>(buffer);
         for (int d = 0; d < site_dim; d++) {
           std::memcpy(&dst_buffer[d * bytes / site_dim], gauge_array[d].data(), bytes / site_dim);
         }
@@ -1375,7 +1377,7 @@ namespace quda {
       qudaMemcpy(data(), buffer, Bytes(), qudaMemcpyHostToDevice);
     } else {
       if (is_pointer_array(order)) {
-        const char *dst_buffer = reinterpret_cast<const char *>(buffer);
+        const char *dst_buffer = static_cast<const char *>(buffer);
         for (int d = 0; d < site_dim; d++) {
           std::memcpy(gauge_array[d].data(), &dst_buffer[d * bytes / site_dim], bytes / site_dim);
         }
@@ -1387,6 +1389,11 @@ namespace quda {
         errorQuda("Unsupported order = %d", Order());
       }
     }
+  }
+
+  void GaugeField::PrintMatrix(int dim, int parity, unsigned int x_cb, int rank) const
+  {
+    genericPrintMatrix(*this, dim, parity, x_cb, rank);
   }
 
 } // namespace quda
