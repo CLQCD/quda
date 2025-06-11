@@ -50,18 +50,18 @@ namespace quda
 
     if (dst.Ncolor() == 3 && src.Ncolor() == 3) {
       if (src.Precision() == QUDA_DOUBLE_PRECISION) {
-        if (chirality == QUDA_CHIRALITY_UPPER) {
-          SpinorChiralEmbed<double, 3, QUDA_CHIRALITY_UPPER>(dst, src);
-        } else if (chirality == QUDA_CHIRALITY_LOWER) {
-          SpinorChiralEmbed<double, 3, QUDA_CHIRALITY_LOWER>(dst, src);
+        if (chirality == QUDA_CHIRALITY_RIGHT) {
+          SpinorChiralEmbed<double, 3, QUDA_CHIRALITY_RIGHT>(dst, src);
+        } else if (chirality == QUDA_CHIRALITY_LEFT) {
+          SpinorChiralEmbed<double, 3, QUDA_CHIRALITY_LEFT>(dst, src);
         } else {
           errorQuda("Unsupported chirality %d", chirality);
         }
       } else if (src.Precision() == QUDA_SINGLE_PRECISION) {
-        if (chirality == QUDA_CHIRALITY_UPPER) {
-          SpinorChiralEmbed<float, 3, QUDA_CHIRALITY_UPPER>(dst, src);
-        } else if (chirality == QUDA_CHIRALITY_LOWER) {
-          SpinorChiralEmbed<float, 3, QUDA_CHIRALITY_LOWER>(dst, src);
+        if (chirality == QUDA_CHIRALITY_RIGHT) {
+          SpinorChiralEmbed<float, 3, QUDA_CHIRALITY_RIGHT>(dst, src);
+        } else if (chirality == QUDA_CHIRALITY_LEFT) {
+          SpinorChiralEmbed<float, 3, QUDA_CHIRALITY_LEFT>(dst, src);
         } else {
           errorQuda("Unsupported chirality %d", chirality);
         }
@@ -117,18 +117,18 @@ namespace quda
 
     if (dst.Ncolor() == 3 && src.Ncolor() == 3) {
       if (src.Precision() == QUDA_DOUBLE_PRECISION) {
-        if (chirality == QUDA_CHIRALITY_UPPER) {
-          SpinorChiralProject<double, 3, QUDA_CHIRALITY_UPPER>(dst, src);
-        } else if (chirality == QUDA_CHIRALITY_LOWER) {
-          SpinorChiralProject<double, 3, QUDA_CHIRALITY_LOWER>(dst, src);
+        if (chirality == QUDA_CHIRALITY_RIGHT) {
+          SpinorChiralProject<double, 3, QUDA_CHIRALITY_RIGHT>(dst, src);
+        } else if (chirality == QUDA_CHIRALITY_LEFT) {
+          SpinorChiralProject<double, 3, QUDA_CHIRALITY_LEFT>(dst, src);
         } else {
           errorQuda("Unsupported chirality %d", chirality);
         }
       } else if (src.Precision() == QUDA_SINGLE_PRECISION) {
-        if (chirality == QUDA_CHIRALITY_UPPER) {
-          SpinorChiralProject<float, 3, QUDA_CHIRALITY_UPPER>(dst, src);
-        } else if (chirality == QUDA_CHIRALITY_LOWER) {
-          SpinorChiralProject<float, 3, QUDA_CHIRALITY_LOWER>(dst, src);
+        if (chirality == QUDA_CHIRALITY_RIGHT) {
+          SpinorChiralProject<float, 3, QUDA_CHIRALITY_RIGHT>(dst, src);
+        } else if (chirality == QUDA_CHIRALITY_LEFT) {
+          SpinorChiralProject<float, 3, QUDA_CHIRALITY_LEFT>(dst, src);
         } else {
           errorQuda("Unsupported chirality %d", chirality);
         }

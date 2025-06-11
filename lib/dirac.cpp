@@ -20,7 +20,6 @@ namespace quda {
     halo_precision(param.halo_precision),
     commDim(param.commDim),
     use_mobius_fused_kernel(param.use_mobius_fused_kernel),
-    chebyshev_degree(param.chebyshev_degree),
     distance_pc_alpha0(param.distance_pc_alpha0),
     distance_pc_t0(param.distance_pc_t0),
     profile("Dirac", false)
@@ -48,7 +47,6 @@ namespace quda {
     dagger(dirac.dagger),
     type(dirac.type),
     halo_precision(dirac.halo_precision),
-    chebyshev_degree(dirac.chebyshev_degree),
     commDim(dirac.commDim),
     distance_pc_alpha0(dirac.distance_pc_alpha0),
     distance_pc_t0(dirac.distance_pc_t0),
@@ -73,9 +71,6 @@ namespace quda {
       other_parity = dirac.other_parity;
       symmetric = dirac.symmetric;
       dagger = dirac.dagger;
-
-      chebyshev_degree = dirac.chebyshev_degree;
-
       commDim = dirac.commDim;
       distance_pc_alpha0 = dirac.distance_pc_alpha0;
       distance_pc_t0 = dirac.distance_pc_t0;
@@ -194,15 +189,6 @@ namespace quda {
     } else if (param.type == QUDA_OVERLAP_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracOverlap operator\n");
       return new DiracOverlap(param);
-    } else if (param.type == QUDA_OVERLAPPC_DIRAC) {
-      if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracOverlapPC operator\n");
-      errorQuda("Overlap Dirac doesn't support even-odd preconditioning\n");
-    } else if (param.type == QUDA_CHIRAL_OVERLAP_DIRAC) {
-      if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracChiralOverlap operator\n");
-      return new DiracChiralOverlap(param);
-    } else if (param.type == QUDA_CHIRAL_OVERLAPPC_DIRAC) {
-      if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracChiralOverlapPC operator\n");
-      errorQuda("Overlap Dirac doesn't support even-odd preconditioning\n");
     }else if (param.type == QUDA_STAGGERED_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracStaggered operator\n");
       return new DiracStaggered(param);

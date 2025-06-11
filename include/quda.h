@@ -459,9 +459,9 @@ extern "C" {
     double overlap_invsqrt_tol;
     /**  Parameters for Overlap propagator*/
     int ov_n_ev;
-    void *ov_eigvals;
-    void **ov_eigvecs;
-    void *ov_masses;
+    double_complex *ov_eigvals;
+    double_complex **ov_eigvecs;
+    double *ov_masses;
 
     /**
      * Parameters for distance preconditioning algorithm proposed in arXiv:1006.4028,
@@ -1216,6 +1216,9 @@ extern "C" {
    * @param param Contains all metadata regarding the type of solve.
    */
   void eigensolveQuda(void **h_evecs, double_complex *h_evals, QudaEigParam *param);
+
+  void invertOverlapQuda(void *hp_x, void *hp_b, QudaInvertParam *param);
+  void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param);
 
   /**
    * Perform the solve, according to the parameters set in param.  It

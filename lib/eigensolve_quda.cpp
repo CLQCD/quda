@@ -314,24 +314,6 @@ namespace quda
       // mat*C_{m}(x)
       mat(out, tmp2);
 
-      // 使用auto接收范数向量，检查每个元素
-      auto norm2_out_vec = blas::norm2(out);
-      bool has_nan = false;
-      
-      // 检查向量中的每个元素是否有NaN
-      for (size_t j = 0; j < norm2_out_vec.size(); j++) {
-        if (std::isnan(norm2_out_vec[j])) {
-          printfQuda("NaN detected in norm2_out[%zu] = %.15e at iteration %d\n", j, norm2_out_vec[j], i);
-          has_nan = true;
-        }
-      }
-      
-      // 如果全部向量的范数都需要检查（可选）
-      if (has_nan) {
-        printfQuda("检测到NaN，打印其他相关信息：\n");
-        printfQuda("当前参数: sigma=%.15e, d1=%.15e, d2=%.15e, d3=%.15e\n", sigma, d1, d2, d3);
-      }
-
       blas::axpbypczw(d3, tmp1, d2, tmp2, d1, out, tmp1);
       std::swap(tmp1, tmp2);
 

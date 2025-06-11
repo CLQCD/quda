@@ -21,7 +21,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      const int offset = (Chirality == QUDA_CHIRALITY_UPPER) ? 0 : Ns / 2;
+      const int offset = (Chirality == QUDA_CHIRALITY_RIGHT) ? 0 : Ns / 2;
       if constexpr (Project) {
         for (int s = 0; s < Ns / 2; s++)
           for (int c = 0; c < Nc; c++) out[s * Nc + c] = in[(offset + s) * Nc + c];
@@ -37,7 +37,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {1, 2, 3, 0};
@@ -69,7 +69,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[2 * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       int s1[4] = {1, 0, 1, 0};
       FloatOut K1[4] = {static_cast<FloatOut>(kP), static_cast<FloatOut>(-kP),
@@ -86,7 +86,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {1, 2, 3, 0};
@@ -119,7 +119,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[2 * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {1, 2, 3, 0};
@@ -143,7 +143,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {1, 2, 1, 0};
@@ -175,7 +175,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {1, 2, 1, 0};
@@ -207,7 +207,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {0, 1, 0, 1};
@@ -239,7 +239,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {0, 1, 0, 1};
@@ -271,7 +271,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {3, 2, 1, 0};
@@ -300,7 +300,7 @@ namespace quda
     template <typename FloatOut, typename FloatIn>
     __device__ __host__ inline void operator()(complex<FloatOut> out[Ns * Nc], const complex<FloatIn> in[Ns * Nc]) const
     {
-      constexpr bool upper = (Chirality == QUDA_CHIRALITY_UPPER);
+      constexpr bool upper = (Chirality == QUDA_CHIRALITY_RIGHT);
       constexpr int offset = upper ? 0 : Ns / 2;
       if constexpr (Project) {
         int s1[4] = {0, 1, 2, 3};

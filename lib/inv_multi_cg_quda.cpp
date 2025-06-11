@@ -71,7 +71,7 @@ namespace quda {
   public:
     ShiftUpdate(ColorSpinorField &r, std::vector<ColorSpinorField> &p, std::vector<ColorSpinorField> &x,
                 std::vector<double> &alpha, std::vector<double> &beta, std::vector<double> &zeta,
-                std::vector<double> &zeta_old, int j_low, int n_shift) :
+                std::vector<double> &zeta_old, int j_low, int n_shift, int stencil_steps) :
       r(r),
       p(p),
       x(x),
@@ -81,7 +81,7 @@ namespace quda {
       zeta_old(zeta_old),
       j_low(j_low),
       n_shift(n_shift),
-      n_update((r.Nspin() == 4) ? 4 : 2)
+      n_update(stencil_steps)
     {
     }
 
@@ -183,11 +183,6 @@ namespace quda {
       zeta_old[j] = zeta[j];
       zeta[j] = (c1 + c2 != 0.0) ? c0 / (c1 + c2) : 0.0;
       alpha[j] = (zeta[j] != 0.0) ? alpha[j_low] * zeta[j] / zeta_old[j] : 0.0;
-
-      if (j <= 2) { // 只打印前几个位移避免输出过多
-        logQuda(QUDA_VERBOSE, "Shift %d: c0=%e, c1=%e, c2=%e, zeta_old=%e, zeta=%e, alpha=%e\n", 
-                j, c0, c1, c2, zeta_old[j], zeta[j], alpha[j]);
-      }
     }
   }
 
@@ -270,7 +265,7 @@ namespace quda {
 
     // now create the worker class for updating the shifted solutions and gradient vectors
     bool aux_update = false;
-    ShiftUpdate shift_update(r_sloppy, p, x_sloppy, alpha, beta, zeta, zeta_old, j_low, num_offset_now);
+    ShiftUpdate shift_update(r_sloppy, p, x_sloppy, alpha, beta, zeta, zeta_old, j_low, num_offset_now, mat.getStencilSteps());
 
     getProfile().TPSTOP(QUDA_PROFILE_PREAMBLE);
     getProfile().TPSTART(QUDA_PROFILE_COMPUTE);
@@ -289,7 +284,7 @@ namespace quda {
       shift_update.updateNshift(num_offset_now);
 
       // at some point we should curry these into the Dirac operator
-      if (r.Nspin() == 4 || r.Nspin() == 2)
+      if (r.Nspin() == 4)
         pAp = blas::axpyReDot(offset[0], p[0], Ap);
       else
         pAp = blas::reDotProduct(p[0], Ap);
@@ -297,14 +292,6 @@ namespace quda {
       // compute zeta and alpha
       for (int j=1; j<num_offset_now; j++) r2_old_array[j] = zeta[j] * zeta[j] * r2[0];
       updateAlphaZeta(alpha, zeta, zeta_old, r2, beta, pAp, offset, num_offset_now, j_low);
-
-      if (k % 10 == 0 || k < 5) {
-        logQuda(QUDA_VERBOSE, "Iteration %d:\n", k);
-        for (int j = 0; j < std::min(3, num_offset_now); j++) {
-          logQuda(QUDA_VERBOSE, "  Shift %d: zeta=%e, alpha=%e, r2=%e, iter_res=%e\n", 
-                  j, zeta[j], alpha[j], r2[j], sqrt(r2[j] / b2));
-        }
-      }
 
       r2_old = r2[0];
       r2_old_array[0] = r2_old;
@@ -356,7 +343,7 @@ namespace quda {
         }
 
         mat(r, x[0]);
-        if (r.Nspin() == 4 || r.Nspin() == 2) blas::axpy(offset[0], x[0], r);
+        if (r.Nspin() == 4) blas::axpy(offset[0], x[0], r);
 
         r2[0] = blas::xmyNorm(b, r);
         for (int j = 1; j < num_offset_now; j++) r2[j] = zeta[j] * zeta[j] * r2[0];
@@ -411,34 +398,11 @@ namespace quda {
           logQuda(QUDA_VERBOSE, "Shift %d converged after %d iterations\n", j, k + 1);
         } else {
 	  r2[j] = zeta[j] * zeta[j] * r2[0];
-
-          double iter_residual = sqrt(r2[j] / b2);
-          double stop_threshold = sqrt(stop[j] / b2);
-          
-          // 添加详细的收敛检查调试输出
-          logQuda(QUDA_VERBOSE, "Shift %d convergence check: zeta=%e, r2=%e, iter_res=%e, stop_thresh=%e, prec_tol=%e\n",
-                  j, zeta[j], r2[j], iter_residual, stop_threshold, prec_tol[j]);
-          
 	  // only remove if shift above has converged
 	  if ((r2[j] < stop[j] || sqrt(r2[j] / b2) < prec_tol[j]) && iter[j+1] ) {
 	    converged++;
 	    iter[j] = k+1;
             logQuda(QUDA_VERBOSE, "Shift %d converged after %d iterations\n", j, k + 1);
-            logQuda(QUDA_VERBOSE, "Shift %d converged after %d iterations (normal branch: iter_res=%e)\n", 
-              j, k + 1, iter_residual);
-          
-              if (param.compute_true_res) {
-              ColorSpinorField temp_r = r;
-              mat(temp_r, x_sloppy[j]);
-              if (r.Nspin() == 4) {
-                blas::axpy(offset[j], x_sloppy[j], temp_r);
-              } else if (j != 0) {
-                blas::axpy(offset[j] - offset[0], x_sloppy[j], temp_r);
-              }
-              double true_res_norm = sqrt(blas::xmyNorm(b, temp_r) / b2);
-              logQuda(QUDA_SUMMARIZE, "Shift %d convergence verification: iter_res=%e, true_res=%e, ratio=%e\n",
-                      j, iter_residual, true_res_norm, true_res_norm / iter_residual);
-            }
           }
 	}
       }
@@ -487,30 +451,21 @@ namespace quda {
         // 2.) For shift 0 if we did not exit early  (we went to the full solution)
         if ( (i > 0 and not mixed) or (i == 0 and not exit_early) ) {
           mat(r, x[i]);
-          if (r.Nspin() == 4 || r.Nspin() == 2) {
+          if (r.Nspin() == 4) {
             blas::axpy(offset[i], x[i], r); // Offset it.
           } else if (i != 0) {
             blas::axpy(offset[i] - offset[0], x[i], r); // Offset it.
           }
           double true_res = blas::xmyNorm(b, r);
           param.true_res_offset[i] = sqrt(true_res / b2);
-          param.true_res_hq_offset[i] = sqrt(blas::HeavyQuarkResidualNorm(x[i], r).z);
-          // if (x[i].Nspin() == 4) { // 只在nSpin=4时计算重夸克残差
-          // } else {
-          //   param.true_res_hq_offset[i] = 0.0;
-          // }
-
-          // 添加调试输出
-          logQuda(QUDA_VERBOSE, "Final residual for shift %d: true_res_norm=%e, iter_res_norm=%e, x_norm=%e\n",
-              i, param.true_res_offset[i], sqrt(r2[i] / b2), sqrt(blas::norm2(x[i])));
-
+          if (x[i].Nspin() != 2) { // 只在nSpin=4时计算重夸克残差
+            param.true_res_hq_offset[i] = sqrt(blas::HeavyQuarkResidualNorm(x[i], r).z);
+          } else {
+            param.true_res_hq_offset[i] = 0.0;
+          }
         } else {
           param.true_res_offset[i] = std::numeric_limits<double>::infinity();
           param.true_res_hq_offset[i] = std::numeric_limits<double>::infinity();
-
-          // 说明为什么设置为无穷大
-          logQuda(QUDA_VERBOSE, "Shift %d true residual set to infinity: mixed=%d, exit_early=%d\n",
-              i, mixed, exit_early);
         }
         param.iter_res_offset[i] = sqrt(r2[i] / b2);
       }

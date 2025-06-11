@@ -1,6 +1,5 @@
-#include "util_quda.h"
+#include <util_quda.h>
 #include <dirac_quda.h>
-// #include <dslash_quda.h>
 #include <blas_quda.h>
 #include <multigrid.h>
 #include <eigensolve_quda.h>
@@ -12,7 +11,7 @@ namespace quda
   // T_{k+1}(x) = 2 x T_k(x) - T_{k-1}(x)
   double Tn(double x, int n)
   {
-    if (abs(x) <= 1.0) { return cos(n * acos(x)); }
+    if (abs(x) <= 1.0) { return cos(n * std::acos(x)); }
     double T0 = 1, T1 = x, Tk;
     switch (n) {
     case 0: return T0;
@@ -122,23 +121,17 @@ namespace quda
     errorQuda("minimaxApproximationRemez can not converge");
   }
 
-  DiracOverlap::DiracOverlap(const DiracParam &param) :
-    DiracWilson(param), mass_overlap(param.mass), wilson(new DiracWilson(param)), zero_shift(0.0), M_mass(false)
-  {
-  }
+  DiracOverlap::DiracOverlap(const DiracParam &param) : DiracWilson(param), wilson(new DiracWilson(param)) { }
 
   DiracOverlap::DiracOverlap(const DiracOverlap &dirac) :
     DiracWilson(dirac),
-    mass_overlap(dirac.mass_overlap),
     wilson(dirac.wilson),
     hermitian_wilson_n_eig(dirac.hermitian_wilson_n_eig),
     hermitian_wilson_evecs(dirac.hermitian_wilson_evecs),
     hermitian_wilson_evals(dirac.hermitian_wilson_evals),
     remez_tol(dirac.remez_tol),
     remez_n(dirac.remez_n),
-    remez_c(dirac.remez_c),
-    zero_shift(dirac.zero_shift),
-    M_mass(dirac.M_mass)
+    remez_c(dirac.remez_c)
   {
   }
 
@@ -148,7 +141,6 @@ namespace quda
   {
     if (&dirac != this) {
       DiracWilson::operator=(dirac);
-      mass_overlap = dirac.mass_overlap;
       wilson = dirac.wilson;
       hermitian_wilson_n_eig = dirac.hermitian_wilson_n_eig;
       hermitian_wilson_evecs = dirac.hermitian_wilson_evecs;
@@ -156,10 +148,20 @@ namespace quda
       remez_tol = dirac.remez_tol;
       remez_n = dirac.remez_n;
       remez_c = dirac.remez_c;
-      zero_shift = dirac.zero_shift;
-      M_mass = dirac.M_mass;
     }
     return *this;
+  }
+
+  void DiracOverlap::Dslash(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                            QudaParity parity) const
+  {
+    errorQuda("DiracOverlap::Dslash not implemented!\n");
+  }
+
+  void DiracOverlap::DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                                QudaParity parity, cvector_ref<const ColorSpinorField> &x, const double &scale) const
+  {
+    errorQuda("DiracOverlap::DslashXpay not implemented!\n");
   }
 
 #define flip(x) (x) = ((x) == QUDA_DAG_YES ? QUDA_DAG_NO : QUDA_DAG_YES)
@@ -168,23 +170,22 @@ namespace quda
   {
     printfQuda("Entering DiracOverlap::M\n");
 
-    auto tmp1 = getFieldTmp(in[0]);
-    auto tmp2 = getFieldTmp(in[0]);
-    auto tmp3 = getFieldTmp(in[0]);
-    auto tmp4 = getFieldTmp(in[0]);
-    auto tmp5 = getFieldTmp(in[0]);
-    ColorSpinorField &b1 = tmp1;
-    ColorSpinorField &b2 = tmp2;
-    ColorSpinorField &Mb1 = tmp3;
-    ColorSpinorField &Ab1 = tmp4;
-    ColorSpinorField &deflated = tmp5;
+    auto b1 = getFieldTmp(out);
+    auto b2 = getFieldTmp(out);
+    auto Mb1 = getFieldTmp(out);
+    auto Ab1 = getFieldTmp(out);
+    auto deflated = getFieldTmp(out);
 
     const double hermitian_wilson_evals_max = hermitian_wilson_evals[hermitian_wilson_n_eig - 1];
     const double epsilon = hermitian_wilson_evals_max * hermitian_wilson_evals_max;
-    const double lambda_max = (1 + 8 * kappa);
-    const double rho = 4 - 1 / (2 * kappa);
+    const double lambda_max = (1.0 + 8.0 * kappa);
+    const double rho = 4.0 - 1.0 / (2.0 * kappa);
 
-    // signLow(out, deflated, hermitian_wilson_evecs, hermitian_wilson_evals, hermitian_wilson_n_eig);
+    /**
+     * \gamma_5 * sign(\gamma_5 M) for small eigenvalues
+     * Define the eigenvalues and eigenvectors \gamma_5 M v_i = \lambda_i v_i
+     * \gamma_5 \sum_i sign(\lambda_i) |v_i><v_i|
+     */
     std::vector<Complex> s(hermitian_wilson_n_eig);
     blas::block::cDotProduct(s, hermitian_wilson_evecs, in);
     for (int i = 0; i < hermitian_wilson_n_eig; i++) { s[i] *= -1; }
@@ -193,58 +194,49 @@ namespace quda
       s[i] *= -hermitian_wilson_evals[i] / abs(hermitian_wilson_evals[i]);
     }
     for (auto &field : out) { field.get().zero(); }
-
     blas::block::caxpy(s, hermitian_wilson_evecs, out);
-
     gamma5(out, out);
 
-    // signHighPolynomial(b1, b2, Ab1, deflated, mat, remez_c, remez_n, epsilon, lambda_max);
-    b1.zero();
-    b2.zero();
-    for (int k = remez_n; k >= 1; --k) {
+    /**
+     * \gamma_5 * sign(\gamma_5 M) for large eigenvalues
+     * Define the Chebyshev polynomial approximation P(x) ~ x^{-1/2}
+     * M P(M^\dagger M)
+     * An extra factor of \lambda_{max} is included in the definition of P(x)
+     */
+    for (ColorSpinorField &field : b1) { field.zero(); }
+    for (ColorSpinorField &field : b2) { field.zero(); }
+    for (int k = remez_n; k >= 0; --k) {
       DiracWilson::M(Mb1, b1);
       flip(dagger);
       DiracWilson::M(Ab1, Mb1);
       flip(dagger);
       blas::axpby(-(1 + epsilon) / (1 - epsilon), b1, 2 / (1 - epsilon) / (lambda_max * lambda_max), Ab1);
-      blas::axpbypczw(remez_c[k], deflated, 2.0, Ab1, -1.0, b2, b2);
+      if (k > 0) {
+        blas::axpbypczw(remez_c[k], deflated, 2.0, Ab1, -1.0, b2, b2);
+      } else {
+        blas::axpbypczw(remez_c[0], deflated, 1.0, Ab1, -1.0, b2, b2);
+      }
       std::swap(b1, b2);
     }
-
     DiracWilson::M(Mb1, b1);
-    flip(dagger);
-    DiracWilson::M(Ab1, Mb1);
-    flip(dagger);
-    blas::axpby(-(1 + epsilon) / (1 - epsilon), b1, 2 / (1 - epsilon) / (lambda_max * lambda_max), Ab1);
-    blas::axpbypczw(remez_c[0], deflated, 1.0, Ab1, -1.0, b2, b2);
-    DiracWilson::M(b1, b2);
-    blas::axpbypczw(rho, in, rho / lambda_max, b1, rho, out, out);
 
-    if (M_mass) {
-      // out = ((1 - m / (2 * \rho)) * D_{ov} + m) * in
-      printfQuda("=====M_mass=====\n");
-      double alpha = 1.0 - (mass_overlap / (2.0 * rho));
-      double beta = mass_overlap;
-      blas::axpbyz(alpha, out, beta, in, out);
-    }
-
-    if (zero_shift != 0.0) {
-      printfQuda("=====zero_shift overlap=====\n");
-      blas::axpby(zero_shift, in, 1.0, out);
-    }
+    /**
+     * \rho (1 + \gamma_5 sign(\gamma_5 M))
+     */
+    blas::axpbypczw(rho, in, rho / lambda_max, Mb1, rho, out, out);
   }
 
   void DiracOverlap::Mdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
     printfQuda("Entering DiracOverlap::Mdag\n");
     checkFullSpinor(out, in);
-    auto tmp_1 = getFieldTmp(out);
-    auto tmp_2 = getFieldTmp(out);
+    auto tmp1 = getFieldTmp(out);
+    auto tmp2 = getFieldTmp(out);
 
-    // M^\dag*x = \gamma_5*M*\gamma_5*x
-    gamma5(tmp_1, in);
-    M(tmp_2, tmp_1);
-    gamma5(out, tmp_2);
+    // M^\dag = \gamma_5 M \gamma_5
+    gamma5(tmp1, in);
+    M(tmp2, tmp1);
+    gamma5(out, tmp2);
   }
 
   void DiracOverlap::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
@@ -263,19 +255,36 @@ namespace quda
     M(out, tmp);
   }
 
-  // void DiracOverlap::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
-  // {
-  //   printfQuda("Entering DiracOverlap::MdagM\n");
-  //   checkFullSpinor(out, in);
-  //   auto tmp_1 = getFieldTmp(in[0]);
-  //   auto tmp_2 = getFieldTmp(in[0]);
+  void DiracOverlap::Mchi(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                          QudaChirality chirality) const
+  {
+    printfQuda("Entering DiracOverlap::Mchi\n");
 
-  //   // Mdag*M*x = \gamma_5*M*\gamma_5*M*x
-  //   M(tmp_1, in);
-  //   gamma5(tmp_1, tmp_1);
-  //   M(tmp_2, tmp_1);
-  //   gamma5(out, tmp_2);
-  // }
+    ColorSpinorParam fullParam(out[0]);
+    fullParam.nSpin = 4;
+    fullParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+    fullParam.create = QUDA_ZERO_FIELD_CREATE;
+    ColorSpinorField in_full(fullParam);
+    ColorSpinorField out_full(fullParam);
+
+    // in(nSpin = 2) -> in_full(nSpin = 4)
+    spinorChiralEmbed(in_full, in[0], chirality);
+
+    // full DiracOverlap::M
+    DiracOverlap::M(out_full, in_full);
+
+    // out_full(nSpin = 4) -> out(nSpin = 2)
+    spinorChiralProject(out[0], out_full, chirality);
+
+    const double two_rho = 2.0 * (4.0 - 1.0 / (2.0 * kappa));
+
+    blas::ax(two_rho, out);
+    if (mass != 0.0) {
+      printfQuda("=====zero_shift chiral_overlap=====\n");
+      const double shift = (mass * mass) / (1 - (mass * mass) / (two_rho * two_rho));
+      blas::axpby(shift, in, 1.0, out);
+    }
+  }
 
   void DiracOverlap::prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src,
                              cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
@@ -333,5 +342,4 @@ namespace quda
     remez_c = minimaxApproximationRemez(invsqrt_tol, pow(hermitian_wilson_evals[n_eig - 1], 2));
     remez_n = remez_c.size() - 1;
   }
-
 } // namespace quda
