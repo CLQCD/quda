@@ -189,7 +189,7 @@ namespace quda {
     } else if (param.type == QUDA_OVERLAP_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracOverlap operator\n");
       return new DiracOverlap(param);
-    }else if (param.type == QUDA_STAGGERED_DIRAC) {
+    } else if (param.type == QUDA_STAGGERED_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracStaggered operator\n");
       return new DiracStaggered(param);
     } else if (param.type == QUDA_STAGGEREDPC_DIRAC) {

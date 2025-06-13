@@ -453,9 +453,6 @@ extern "C" {
     /** Whether to use fused kernels for mobius */
     QudaBoolean use_mobius_fused_kernel;
 
-    int hermitian_wilson_n_ev;
-    int hermitian_wilson_n_kr;
-    double hermitian_wilson_tol;
     double overlap_invsqrt_tol;
     /**  Parameters for Overlap propagator*/
     int ov_n_ev;
@@ -1217,6 +1214,8 @@ extern "C" {
    */
   void eigensolveQuda(void **h_evecs, double_complex *h_evals, QudaEigParam *param);
 
+  void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param);
+  void freeOverlapQuda();
   void invertOverlapQuda(void *hp_x, void *hp_b, QudaInvertParam *param);
   void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param);
 

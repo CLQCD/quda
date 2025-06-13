@@ -71,7 +71,7 @@ namespace quda {
   public:
     ShiftUpdate(ColorSpinorField &r, std::vector<ColorSpinorField> &p, std::vector<ColorSpinorField> &x,
                 std::vector<double> &alpha, std::vector<double> &beta, std::vector<double> &zeta,
-                std::vector<double> &zeta_old, int j_low, int n_shift, int stencil_steps) :
+                std::vector<double> &zeta_old, int j_low, int n_shift, int n_update) :
       r(r),
       p(p),
       x(x),
@@ -81,7 +81,7 @@ namespace quda {
       zeta_old(zeta_old),
       j_low(j_low),
       n_shift(n_shift),
-      n_update(stencil_steps)
+      n_update(n_update)
     {
     }
 
@@ -265,7 +265,8 @@ namespace quda {
 
     // now create the worker class for updating the shifted solutions and gradient vectors
     bool aux_update = false;
-    ShiftUpdate shift_update(r_sloppy, p, x_sloppy, alpha, beta, zeta, zeta_old, j_low, num_offset_now, mat.getStencilSteps());
+    ShiftUpdate shift_update(r_sloppy, p, x_sloppy, alpha, beta, zeta, zeta_old, j_low, num_offset_now,
+                             mat.getStencilSteps());
 
     getProfile().TPSTOP(QUDA_PROFILE_PREAMBLE);
     getProfile().TPSTART(QUDA_PROFILE_COMPUTE);

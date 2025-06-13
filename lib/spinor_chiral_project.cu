@@ -11,7 +11,7 @@ namespace quda
     ColorSpinorField &out;
     const ColorSpinorField &in;
     template <template <int, int, QudaChirality, bool> class Basis>
-    using Arg = ChrialEmbedSpinorArg<Float, Nc, Chirality, Basis>;
+    using Arg = ChiralEmbedSpinorArg<Float, Nc, Chirality, Basis>;
     unsigned int minThreads() const { return in.VolumeCB(); }
 
   public:

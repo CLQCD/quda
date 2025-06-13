@@ -9,6 +9,7 @@
 #include <blas_quda.h>
 #include <field_cache.h>
 #include <memory>
+#include <overlap_kernel.h>
 
 namespace quda {
 
@@ -66,6 +67,8 @@ namespace quda {
     bool allow_truncation; /** whether or not we let MG coarsening drop improvements, for ex drop long links for small aggregate dimensions */
 
     bool use_mobius_fused_kernel; // Whether or not use fused kernels for Mobius
+
+    OverlapKernel *overlap_kernel;
 
     double distance_pc_alpha0; // used by distance preconditioning
     int distance_pc_t0;        // used by distance preconditioning
@@ -149,7 +152,7 @@ namespace quda {
   class DiracMMdag;
   class DiracMdag;
   class DiracG5M;
-  class DiracMChiral;
+  class DiracMdagMChiral;
   //Forward declaration of multigrid Transfer class
   class Transfer;
 
@@ -163,7 +166,7 @@ namespace quda {
     friend class DiracMMdag;
     friend class DiracMdag;
     friend class DiracG5M;
-    friend class DiracMChiral;
+    friend class DiracMdagMChiral;
 
   protected:
     GaugeField *gauge;
@@ -353,9 +356,12 @@ namespace quda {
     virtual void MMdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
 
     /**
-       @brief Apply M on single chirality
+       @brief Apply MdagM on single chirality
     */
-    virtual void Mchi(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, QudaChirality chirality) const { errorQuda("Not implemented!"); }
+    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
+    {
+      errorQuda("Not implemented!");
+    }
 
     /**
        @brief Prepare the source and solution vectors for solving given the solution type
@@ -1414,35 +1420,33 @@ public:
   };
 
   // Full overlap
-  class DiracOverlap : public DiracWilson {
+  class DiracOverlap : public DiracWilson
+  {
 
   protected:
-    DiracWilson *wilson;
-    mutable int hermitian_wilson_n_eig;
-    mutable std::vector<ColorSpinorField> hermitian_wilson_evecs;
-    mutable std::vector<double> hermitian_wilson_evals;
-    mutable double remez_tol;
-    mutable int remez_n;
-    mutable std::vector<double> remez_c;
+    OverlapKernel *overlap_kernel;
 
   public:
     DiracOverlap(const DiracParam &param);
     DiracOverlap(const DiracOverlap &dirac);
     virtual ~DiracOverlap();
-    DiracOverlap& operator=(const DiracOverlap &dirac);
+    DiracOverlap &operator=(const DiracOverlap &dirac);
 
-    virtual void Dslash(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, const QudaParity ) const;
-    virtual void DslashXpay(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, const QudaParity, cvector_ref<const ColorSpinorField> &, const double &) const;
+    virtual void Dslash(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                        QudaParity parity) const override;
+    virtual void DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                            QudaParity parity, cvector_ref<const ColorSpinorField> &x, double k) const override;
     virtual void M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
     virtual void MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
-    virtual void Mdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
-    virtual void MMdag(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
-    virtual void Mchi(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, QudaChirality chirality) const;
+    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
 
-    virtual void prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src, cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
-    virtual void reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b, const QudaSolutionType) const;
+    virtual void prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src,
+                         cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
+                         const QudaSolutionType) const;
+    virtual void reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
+                             const QudaSolutionType) const;
 
-    virtual int getStencilSteps() const override { return 2 * (remez_n + 1) + 1; }
+    virtual int getStencilSteps() const override { return 2 * (overlap_kernel->remez_order[0] + 1) + 1; }
     virtual QudaDiracType getDiracType() const { return QUDA_OVERLAP_DIRAC; }
 
     /**
@@ -1453,8 +1457,6 @@ public:
       @param[in] stream Which stream to run the prefetch in (default 0)
     */
     virtual void prefetch(QudaFieldLocation mem_space, qudaStream_t stream = device::get_default_stream()) const;
-
-    void setupHermitianWilson(int n_eig, const std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals, double invsqrt_tol) const;
   };
 
   // Full staggered
@@ -2550,6 +2552,7 @@ public:
       case QUDA_CLOVER_HASENBUSCH_TWIST_DIRAC:
       case QUDA_TWISTED_MASS_DIRAC:
       case QUDA_TWISTED_CLOVER_DIRAC:
+      case QUDA_OVERLAP_DIRAC:
         // while the twisted ops don't have a Hermitian indefinite spectrum, they
         // do have a spectrum of the form (real) + i mu
         gamma5(vec, vec);
@@ -2576,7 +2579,6 @@ public:
         // needs 5th dimension reversal, Mobius needs that inversion...
         errorQuda("Support for Hermitian DWF operator %d does not exist yet", dirac_type);
         break;
-      case QUDA_OVERLAP_DIRAC:
       case QUDA_STAGGERED_DIRAC:
       case QUDA_ASQTAD_DIRAC:
         // Gamma5 is (-1)^(x+y+z+t)
@@ -2636,8 +2638,7 @@ public:
           || dirac_type == QUDA_GAUGE_COVDEV_DIRAC)
         return true;
 
-      if (dirac_type == QUDA_WILSON_DIRAC || dirac_type == QUDA_CLOVER_DIRAC)
-        return true;
+      if (dirac_type == QUDA_WILSON_DIRAC || dirac_type == QUDA_CLOVER_DIRAC) return true;
 
       // subtle: odd operator gets a minus sign
       if ((dirac_type == QUDA_STAGGEREDPC_DIRAC || dirac_type == QUDA_ASQTADPC_DIRAC)
@@ -2649,16 +2650,16 @@ public:
   };
 
   /**
-     Gloms onto a DiracMatrix and provides an operator() for its Mchi method
+     Gloms onto a DiracMatrix and provides an operator() for its MdagMChiral method
   */
-  class DiracMChiral : public DiracMatrix
+  class DiracMdagMChiral : public DiracMatrix
   {
   protected:
     QudaChirality chirality; // chirality of the operator, used to determine how to apply gamma5
 
   public:
-    DiracMChiral(const Dirac &d) : DiracMatrix(d) { }
-    DiracMChiral(const Dirac *d) : DiracMatrix(d) { }
+    DiracMdagMChiral(const Dirac &d) : DiracMatrix(d) { }
+    DiracMdagMChiral(const Dirac *d) : DiracMatrix(d) { }
 
     /**
        @brief Multi-RHS operator application.
@@ -2667,11 +2668,26 @@ public:
      */
     void operator()(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const override
     {
-      dirac->Mchi(out, in, chirality);
+      ColorSpinorParam fullParam(out[0]);
+      fullParam.nSpin = 4;
+      fullParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+      auto in_full = getFieldTmp<ColorSpinorField>(out.size(), fullParam);
+      auto out_full = getFieldTmp<ColorSpinorField>(out.size(), fullParam);
+
+      spinorChiralEmbed(in_full[0], in[0], chirality);
+      dirac->MdagMChiral(out_full, in_full);
+      spinorChiralProject(out[0], out_full[0], chirality);
       if (shift != 0.0) blas::axpy(shift, in, out);
     }
 
-    int getStencilSteps() const override { return dirac->getStencilSteps(); }
+    int getStencilSteps() const override
+    {
+      if (dirac->getDiracType() == QUDA_OVERLAP_DIRAC) {
+        return dirac->getStencilSteps();
+      } else {
+        return dirac->getStencilSteps() * 2; // 2 for M and M dagger
+      }
+    }
 
     /**
        @brief return if the operator is HPD

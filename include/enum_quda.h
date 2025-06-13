@@ -641,7 +641,7 @@ typedef enum QudaExtLibType_s {
 } QudaExtLibType;
 
 typedef enum QudaChirality_s {
-  QUDA_CHIRALITY_LEFT = -1, // left chirality, (1 - \gamma_5) / 2
+  QUDA_CHIRALITY_LEFT = -1,  // left chirality, (1 - \gamma_5) / 2
   QUDA_CHIRALITY_RIGHT = +1, // right chirality, (1 + \gamma_5) / 2
   QUDA_CHIRALITY_INVALID = QUDA_INVALID_ENUM
 } QudaChirality;

@@ -31,7 +31,7 @@ namespace quda
   };
 
   template <typename store_t, int nColor_, QudaChirality Chirality_, template <int, int, QudaChirality, bool> class Basis_>
-  struct ChrialEmbedSpinorArg : kernel_param<> {
+  struct ChiralEmbedSpinorArg : kernel_param<> {
     using real = typename mapper<store_t>::type;
     static constexpr int nSpinOut = 4;
     static constexpr int nSpinIn = 2;
@@ -44,7 +44,7 @@ namespace quda
     int X[4];
     Vout out;
     const Vin in;
-    ChrialEmbedSpinorArg(ColorSpinorField &out, const ColorSpinorField &in) :
+    ChiralEmbedSpinorArg(ColorSpinorField &out, const ColorSpinorField &in) :
       kernel_param(dim3(in.VolumeCB(), in.SiteSubset(), 1)), out(out), in(in)
     {
       for (int dir = 0; dir < 4; dir++) X[dir] = in.X()[dir];
