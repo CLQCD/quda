@@ -137,6 +137,9 @@ static TimeProfile profileGauge("loadGaugeQuda");
 //!< Profile for loadCloverQuda
 static TimeProfile profileClover("loadCloverQuda");
 
+//!< Profiler for loadOverlapQuda
+static TimeProfile profileOverlap("loadOverlapQuda");
+
 //!< Profiler for dslashQuda
 static TimeProfile profileDslash("dslashQuda");
 
@@ -1103,7 +1106,7 @@ void loadSloppyOverlapQuda(const QudaPrecision prec[])
 
 void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param)
 {
-  auto profile = pushProfile(profileClover);
+  auto profile = pushProfile(profileOverlap);
   pushVerbosity(inv_param->verbosity);
 
   checkInvertParam(inv_param);
@@ -1117,33 +1120,35 @@ void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param)
   cudaParam.create = QUDA_ZERO_FIELD_CREATE;
   cudaParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
 
-  std::vector<Complex> evals(eig_param->n_conv, 0.0);
-  std::vector<ColorSpinorField> evecs(eig_param->n_conv, ColorSpinorField(cudaParam));
+  const int n_eig = eig_param->n_conv;
+  std::vector<Complex> evals(n_eig, 0.0);
+  std::vector<ColorSpinorField> evecs(n_eig, ColorSpinorField(cudaParam));
 
-  eig_param->eig_type = QUDA_EIG_TR_LANCZOS;
-  // eig_param->use_poly_acc = QUDA_BOOLEAN_TRUE;
-  // eig_param->poly_deg = 50;
-  // eig_param->a_min = 0.2 * 0.2;
-  // eig_param->a_max = (1 + 8 * inv_param->kappa) * (1 + 8 * inv_param->kappa);
-  eig_param->use_dagger = QUDA_BOOLEAN_FALSE;
-  eig_param->use_norm_op = QUDA_BOOLEAN_TRUE;
-  eig_param->use_pc = QUDA_BOOLEAN_FALSE;
-  eig_param->compute_gamma5 = QUDA_BOOLEAN_FALSE;
-  eig_param->spectrum = QUDA_SPECTRUM_SR_EIG;
-  // eig_param->n_ev = inv_param->hermitian_wilson_n_ev;
-  // eig_param->n_kr = inv_param->hermitian_wilson_n_kr;
-  // eig_param->n_conv = inv_param->hermitian_wilson_n_ev;
-  // eig_param->tol = inv_param->hermitian_wilson_tol;
-  // eig_param->max_restarts = 1000;
-  // eig_param->vec_infile[0] = 0;
-  // eig_param->vec_outfile[0] = 0;
+  QudaEigParam eig_param_g5w(*eig_param);
+  eig_param_g5w.eig_type = QUDA_EIG_TR_LANCZOS;
+  eig_param_g5w.use_dagger = QUDA_BOOLEAN_FALSE;
+  eig_param_g5w.use_norm_op = QUDA_BOOLEAN_TRUE;
+  eig_param_g5w.use_pc = QUDA_BOOLEAN_FALSE;
+  eig_param_g5w.compute_gamma5 = QUDA_BOOLEAN_FALSE;
+  eig_param_g5w.spectrum = QUDA_SPECTRUM_SR_EIG;
+  // eig_param_g5w.use_poly_acc = QUDA_BOOLEAN_TRUE;
+  // eig_param_g5w.poly_deg = 50;
+  eig_param_g5w.a_min = eig_param->a_min * eig_param->a_min;
+  eig_param_g5w.a_max = (1 + 8 * inv_param->kappa) * (1 + 8 * inv_param->kappa);
+  // eig_param_g5w.n_ev = inv_param->hermitian_wilson_n_ev;
+  // eig_param_g5w.n_kr = inv_param->hermitian_wilson_n_kr;
+  // eig_param_g5w.n_conv = inv_param->hermitian_wilson_n_ev;
+  // eig_param_g5w.tol = inv_param->hermitian_wilson_tol;
+  // eig_param_g5w.max_restarts = 1000;
+  // eig_param_g5w.vec_infile[0] = 0;
+  // eig_param_g5w.vec_outfile[0] = 0;
 
   DiracParam diracParam;
   setDiracParam(diracParam, inv_param, false);
   Dirac *d = new DiracWilson(diracParam);
 
   DiracMatrix *m = new DiracMdagM(*d);
-  auto *eig_solve = quda::EigenSolver::create(eig_param, *m);
+  auto *eig_solve = quda::EigenSolver::create(&eig_param_g5w, *m);
   (*eig_solve)(evecs, evals);
   delete eig_solve;
 
@@ -1151,7 +1156,7 @@ void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param)
   delete m;
   m = new DiracG5M(*d);
   ColorSpinorField tmp(cudaParam);
-  for (int i = 0; i < eig_param->n_conv; ++i) {
+  for (int i = 0; i < n_eig; ++i) {
     (*m)(tmp, evecs[i]);
     evals[i] = blas::cDotProduct(tmp, evecs[i]);
   }
@@ -1595,6 +1600,7 @@ void endQuda(void)
     profileInit.Print();
     profileGauge.Print();
     profileClover.Print();
+    profileOverlap.Print();
     profileDslash.Print();
     profileInvert.Print();
     profileInvertMultiSrc.Print();
@@ -3288,8 +3294,6 @@ void invertOverlapQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
     DiracParam diracOvParam;
     setDiracParam(diracOvParam, param, pc_solve);
 
-    const double rho = 4.0 - 1.0 / (2.0 * (param->kappa));
-
     // 加载 overlap 低模部分特征系统
     Complex *evals_ov;
     Complex **evecs_ov;
@@ -3323,163 +3327,92 @@ void invertOverlapQuda(void *hp_x, void *hp_b, QudaInvertParam *param)
       }
     }
 
-    // 低模传播子计算
-    // {
-    //   printfQuda("===============Compute low-mode propagator===============\n");
-    //   gpuParam.create = QUDA_NULL_FIELD_CREATE;
+    printfQuda("===============Compute low-mode propagator===============\n");
+    gpuParam.create = QUDA_NULL_FIELD_CREATE;
+    gpuParam.nSpin = 4;
+    gpuParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+    ColorSpinorField tmp(gpuParam);
 
-    //   // 源向量的投影
-    //   gpuParam.nSpin = 2;
-    //   gpuParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-    //   ColorSpinorField chi_in_l(gpuParam);
-    //   ColorSpinorField chi_in_r(gpuParam);
+    // 源向量的投影
+    gpuParam.nSpin = 2;
+    gpuParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+    ColorSpinorField in_right(gpuParam);
+    ColorSpinorField in_left(gpuParam);
+    ColorSpinorField out_right(gpuParam);
+    ColorSpinorField out_left(gpuParam);
 
-    //   // 将源向量投影到左/右手性
-    //   spinorChiralProject(chi_in_l, in, QUDA_CHIRALITY_RIGHT);
-    //   spinorChiralProject(chi_in_r, in, QUDA_CHIRALITY_LEFT);
+    spinorChiralProject(in_right, in, QUDA_CHIRALITY_RIGHT);
+    spinorChiralProject(in_left, in, QUDA_CHIRALITY_LEFT);
 
-    //   // 创建可重用的特征向量处理临时变量
-    //   ColorSpinorField chi_v_l(gpuParam);
-    //   ColorSpinorField chi_v_r(gpuParam);
+    const double two_rho = 8.0 - 1.0 / param->kappa;
+    const double mass = param->mass;
+    const double offset = (mass * mass) / (two_rho * two_rho - mass * mass);
 
-    //   // 创建可重用的输出处理临时变量
-    //   ColorSpinorField out_l(gpuParam);
-    //   ColorSpinorField out_r(gpuParam);
-
-    //   // 用于全自旋重构
-    //   gpuParam.nSpin = 4;
-    //   gpuParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
-    //   ColorSpinorField out_l_full(gpuParam);
-    //   ColorSpinorField out_r_full(gpuParam);
-
-    //   // 处理每个特征模式
-    //   for(int i = 0; i < n_low; i++) {
-    //     // 将当前特征向量投影到左/右手性
-    //     spinorChiralProject(chi_v_l, gpu_evecs[i], QUDA_CHIRALITY_RIGHT);
-    //     spinorChiralProject(chi_v_r, gpu_evecs[i], QUDA_CHIRALITY_LEFT);
-
-    //     // 计算内积因子
-    //     Complex leftCoef = blas::cDotProduct(chi_v_l, chi_in_l);
-    //     Complex rightCoef = blas::cDotProduct(chi_v_r, chi_in_r);
-    //     Complex sumCoef = leftCoef + rightCoef;
-
-    //     // 将特征值按 rho 缩放
-    //     Complex eval(evals_ov[i].real() / rho, evals_ov[i].imag() / rho);
-
-    //     if(sqrt(std::fabs(eval.real())) > 100 * std::fabs(eval.imag())) {
-    //       // 零模
-    //       Complex inv_m = 1.0 / m; // 零模时直接算出
-    //       blas::caxpy((leftCoef + rightCoef) * inv_m, gpu_evecs[i], out);
-    //     } else {
-    //       // 非零模
-    //       Complex half(0.5, 0.0);
-    //       Complex inv_m = (1.0 - (eval * half)) / (rho * eval + m * (1.0 - eval * half));
-
-    //       Complex left_prj = inv_m.real() * leftCoef + inv_m.imag() * rightCoef * Complex(0.0, 1.0);
-    //       Complex right_prj = inv_m.real() * rightCoef + inv_m.imag() * leftCoef * Complex(0.0, 1.0);
-
-    //       blas::zero(out_l);
-    //       blas::zero(out_r);
-    //       blas::caxpy(2.0 * left_prj, chi_v_l, out_l);
-    //       blas::caxpy(2.0 * right_prj, chi_v_r, out_r);
-
-    //       // 将结果投影到全自旋
-    //       spinorChiralEmbed(out_l_full, out_l, QUDA_CHIRALITY_RIGHT);
-    //       spinorChiralEmbed(out_r_full, out_r, QUDA_CHIRALITY_LEFT);
-
-    //       // 将结果加到输出向量
-    //       blas::xpy(out_l_full, out);
-    //       blas::xpy(out_r_full, out);
-    //     }
-    //   }
-    // }
-
-    // deflate source
-    ColorSpinorField in_def(cudaParam);
-    blas::copy(in_def, in);
-    {
-      printfQuda("===============deflate source===============\n");
-      for (int i = 0; i < n_low; i++) {
-        Complex alpha = blas::cDotProduct(gpu_evecs[i], in_def);
-        blas::caxpy(-alpha, gpu_evecs[i], in_def);
-
-        ColorSpinorField gamma5_evec(cudaParam);
-        blas::zero(gamma5_evec);
-        {
-          cvector_ref<ColorSpinorField> out_vec(gamma5_evec);
-          cvector_ref<const ColorSpinorField> in_vec(gpu_evecs[i]);
-          gamma5(out_vec, in_vec);
-        }
-        alpha = blas::cDotProduct(gamma5_evec, in_def);
-        blas::caxpy(-alpha, gamma5_evec, in_def);
+    // 处理每个特征模式
+    for (int i = 0; i < n_low; i++) {
+      spinorChiralProject(out_right, gpu_evecs[i], QUDA_CHIRALITY_RIGHT);
+      spinorChiralProject(out_left, gpu_evecs[i], QUDA_CHIRALITY_LEFT);
+      // 计算内积因子
+      Complex alpha_right = blas::cDotProduct(out_right, in_right);
+      Complex alpha_left = blas::cDotProduct(out_left, in_left);
+      Complex lambda = evals_ov[i] / two_rho;
+      if (sqrt(std::fabs(lambda.real())) > 100 * std::fabs(lambda.imag())) {
+        blas::caxpy(-alpha_right, out_right, in_right);
+        blas::caxpy(-alpha_left, out_left, in_left);
+        double inv_m = 1.0 / offset;
+        spinorChiralEmbed(tmp, out_right, QUDA_CHIRALITY_RIGHT);
+        blas::caxpy(inv_m * alpha_right, tmp, out);
+        spinorChiralEmbed(tmp, out_left, QUDA_CHIRALITY_LEFT);
+        blas::caxpy(inv_m * alpha_left, tmp, out);
+      } else {
+        blas::caxpy(-2.0 * alpha_right, out_right, in_right);
+        blas::caxpy(-2.0 * alpha_left, out_left, in_left);
+        double inv_m = 1.0 / (offset + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
+        spinorChiralEmbed(tmp, out_right, QUDA_CHIRALITY_RIGHT);
+        blas::caxpy(2.0 * inv_m * alpha_right, tmp, out);
+        spinorChiralEmbed(tmp, out_left, QUDA_CHIRALITY_LEFT);
+        blas::caxpy(2.0 * inv_m * alpha_left, tmp, out);
       }
     }
 
     // high-mode propagator
-    ColorSpinorField out_high(cudaParam);
-    {
-      printfQuda("===============Compute high-mode propagator===============\n");
-      ColorSpinorParam chiParam(in);
-      ColorSpinorParam fullParam(in);
-      chiParam.nSpin = 2;
-      chiParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-      chiParam.create = QUDA_ZERO_FIELD_CREATE;
-      fullParam.create = QUDA_ZERO_FIELD_CREATE;
+    printfQuda("===============Compute high-mode propagator===============\n");
+    bool flag_right = blas::norm2(in_right) > 1e-6;
+    bool flag_left = blas::norm2(in_left) > 1e-6;
+    logQuda(QUDA_VERBOSE, "flag_right = %d, flag_left = %d\n", flag_right, flag_left);
 
-      ColorSpinorField in_def_right(chiParam);
-      spinorChiralProject(in_def_right, in_def, QUDA_CHIRALITY_RIGHT);
-      bool flag_right = blas::norm2(in_def_right) > 1e-6;
-      ColorSpinorField in_def_left(chiParam);
-      spinorChiralProject(in_def_left, in_def, QUDA_CHIRALITY_LEFT);
-      bool flag_left = blas::norm2(in_def_left) > 1e-6;
-      logQuda(QUDA_VERBOSE, "flag_right = %d, flag_left = %d\n", flag_right, flag_left);
+    DiracMdagMChiral m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
 
-      ColorSpinorField out_chi(chiParam);
-      ColorSpinorField out_right(fullParam);
-      ColorSpinorField out_left(fullParam);
+    if (flag_right) {
+      printfQuda("===============Compute Right===============\n");
 
-      DiracMdagMChiral m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
-
-      if (flag_right) {
-        printfQuda("===============Compute Right===============\n");
-
-        m.setChirality(QUDA_CHIRALITY_RIGHT);
-        mSloppy.setChirality(QUDA_CHIRALITY_RIGHT);
-        mPre.setChirality(QUDA_CHIRALITY_RIGHT);
-        mEig.setChirality(QUDA_CHIRALITY_RIGHT);
-        SolverParam solverParam_L(*param);
-        Solver *solve_L = Solver::create(solverParam_L, m, mSloppy, mPre, mEig);
-        (*solve_L)(out_chi, in_def_right);
-        delete solve_L;
-        solverParam_L.updateInvertParam(*param);
-        spinorChiralEmbed(out_right, out_chi, QUDA_CHIRALITY_RIGHT);
-
-        // double norm2_out_L = blas::norm2(out_chi);
-        // printfQuda("norm2_out_L: %e\n", norm2_out_L);
-      }
-
-      if (flag_left) {
-        printfQuda("===============Compute Left===============\n");
-
-        m.setChirality(QUDA_CHIRALITY_LEFT);
-        mSloppy.setChirality(QUDA_CHIRALITY_LEFT);
-        mPre.setChirality(QUDA_CHIRALITY_LEFT);
-        mEig.setChirality(QUDA_CHIRALITY_LEFT);
-        SolverParam solverParam_R(*param);
-        Solver *solve_R = Solver::create(solverParam_R, m, mSloppy, mPre, mEig);
-        (*solve_R)(out_chi, in_def_left);
-        delete solve_R;
-        solverParam_R.updateInvertParam(*param);
-        spinorChiralEmbed(out_left, out_chi, QUDA_CHIRALITY_LEFT);
-      }
-
-      // merge Left and Right
-      blas::axpbyz(1.0, out_right, 1.0, out_left, out_high);
+      m.setChirality(QUDA_CHIRALITY_RIGHT);
+      mSloppy.setChirality(QUDA_CHIRALITY_RIGHT);
+      mPre.setChirality(QUDA_CHIRALITY_RIGHT);
+      mEig.setChirality(QUDA_CHIRALITY_RIGHT);
+      SolverParam solverParam_L(*param);
+      Solver *solve_L = Solver::create(solverParam_L, m, mSloppy, mPre, mEig);
+      (*solve_L)(out_right, in_right);
+      delete solve_L;
+      solverParam_L.updateInvertParam(*param);
+      spinorChiralEmbed(tmp, out_right, QUDA_CHIRALITY_RIGHT);
+      blas::xpy(tmp, out);
     }
 
-    // merge low-mode and high-mode propagator
-    {
-      blas::axpby(1.0, out_high, 1.0, out);
+    if (flag_left) {
+      printfQuda("===============Compute Left===============\n");
+
+      m.setChirality(QUDA_CHIRALITY_LEFT);
+      mSloppy.setChirality(QUDA_CHIRALITY_LEFT);
+      mPre.setChirality(QUDA_CHIRALITY_LEFT);
+      mEig.setChirality(QUDA_CHIRALITY_LEFT);
+      SolverParam solverParam_R(*param);
+      Solver *solve_R = Solver::create(solverParam_R, m, mSloppy, mPre, mEig);
+      (*solve_R)(out_left, in_left);
+      delete solve_R;
+      solverParam_R.updateInvertParam(*param);
+      spinorChiralEmbed(tmp, out_left, QUDA_CHIRALITY_LEFT);
+      blas::xpy(tmp, out);
     }
   }
 
@@ -4392,52 +4325,58 @@ void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param
     }
   }
 
-  // deflate source
-  ColorSpinorField in_def(cudaParam);
-  blas::copy(in_def, b);
-  {
-    printfQuda("===============deflate source===============\n");
-    for (int i = 0; i < n_low; i++) {
-      Complex alpha = blas::cDotProduct(gpu_evecs[i], in_def);
-      blas::caxpy(-alpha, gpu_evecs[i], in_def);
+  gpuParam.create = QUDA_NULL_FIELD_CREATE;
+  gpuParam.nSpin = 4;
+  gpuParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+  ColorSpinorField tmp(gpuParam);
 
-      ColorSpinorField gamma5_evec(cudaParam);
-      blas::zero(gamma5_evec);
-      {
-        cvector_ref<ColorSpinorField> out_vec(gamma5_evec);
-        cvector_ref<const ColorSpinorField> in_vec(gpu_evecs[i]);
-        gamma5(out_vec, in_vec);
+  // 源向量的投影
+  gpuParam.nSpin = 2;
+  gpuParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+  ColorSpinorField in_right(gpuParam);
+  ColorSpinorField in_left(gpuParam);
+  std::vector<ColorSpinorField> out_right(param->num_offset, ColorSpinorField(gpuParam));
+  std::vector<ColorSpinorField> out_left(param->num_offset, ColorSpinorField(gpuParam));
+
+  spinorChiralProject(in_right, b, QUDA_CHIRALITY_RIGHT);
+  spinorChiralProject(in_left, b, QUDA_CHIRALITY_LEFT);
+
+  const double two_rho = 8.0 - 1.0 / param->kappa;
+
+  // 处理每个特征模式
+  for (int i = 0; i < n_low; i++) {
+    spinorChiralProject(out_right[0], gpu_evecs[i], QUDA_CHIRALITY_RIGHT);
+    spinorChiralProject(out_left[0], gpu_evecs[i], QUDA_CHIRALITY_LEFT);
+    // 计算内积因子
+    Complex alpha_right = blas::cDotProduct(out_right[0], in_right);
+    Complex alpha_left = blas::cDotProduct(out_left[0], in_left);
+    Complex lambda = evals_ov[i] / two_rho;
+    if (sqrt(std::fabs(lambda.real())) > 100 * std::fabs(lambda.imag())) {
+      blas::caxpy(-alpha_right, out_right[0], in_right);
+      blas::caxpy(-alpha_left, out_left[0], in_left);
+      for (int j = 0; j < param->num_offset; j++) {
+        double inv_m = 1.0 / (param->offset[j]);
+        spinorChiralEmbed(tmp, out_right[0], QUDA_CHIRALITY_RIGHT);
+        blas::caxpy(inv_m * alpha_right, tmp, x[j]);
+        spinorChiralEmbed(tmp, out_left[0], QUDA_CHIRALITY_LEFT);
+        blas::caxpy(inv_m * alpha_left, tmp, x[j]);
       }
-      alpha = blas::cDotProduct(gamma5_evec, in_def);
-      blas::caxpy(-alpha, gamma5_evec, in_def);
+    } else {
+      blas::caxpy(-2.0 * alpha_right, out_right[0], in_right);
+      blas::caxpy(-2.0 * alpha_left, out_left[0], in_left);
+      for (int j = 0; j < param->num_offset; j++) {
+        double inv_m = 1.0 / (param->offset[j] + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
+        spinorChiralEmbed(tmp, out_right[0], QUDA_CHIRALITY_RIGHT);
+        blas::caxpy(2.0 * inv_m * alpha_right, tmp, x[j]);
+        spinorChiralEmbed(tmp, out_left[0], QUDA_CHIRALITY_LEFT);
+        blas::caxpy(2.0 * inv_m * alpha_left, tmp, x[j]);
+      }
     }
   }
 
-  // high-mode propagator
-  std::vector<ColorSpinorField> out_high(param->num_offset);
-  for (auto &v : out_high) { v = ColorSpinorField(cudaParam); }
-
   printfQuda("===============Compute high-mode propagator===============\n");
-  ColorSpinorParam chiParam(b);
-  ColorSpinorParam fullParam(b);
-  chiParam.nSpin = 2;
-  chiParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-  chiParam.create = QUDA_ZERO_FIELD_CREATE;
-  fullParam.create = QUDA_ZERO_FIELD_CREATE;
-
-  ColorSpinorField in_def_right(chiParam);
-  spinorChiralProject(in_def_right, in_def, QUDA_CHIRALITY_RIGHT);
-  bool flag_right = blas::norm2(in_def_right) > 1e-6;
-  ColorSpinorField in_def_left(chiParam);
-  spinorChiralProject(in_def_left, in_def, QUDA_CHIRALITY_LEFT);
-  bool flag_left = blas::norm2(in_def_left) > 1e-6;
-
-  std::vector<ColorSpinorField> out_chi(param->num_offset);
-  for (auto &v : out_chi) { v = ColorSpinorField(chiParam); }
-  std::vector<ColorSpinorField> out_right(param->num_offset);
-  for (auto &v : out_right) { v = ColorSpinorField(fullParam); }
-  std::vector<ColorSpinorField> out_left(param->num_offset);
-  for (auto &v : out_left) { v = ColorSpinorField(fullParam); }
+  bool flag_right = blas::norm2(in_right) > 1e-6;
+  bool flag_left = blas::norm2(in_left) > 1e-6;
 
   d->setMass(masses[0]);
   dSloppy->setMass(masses[0]);
@@ -4450,9 +4389,8 @@ void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param
     mSloppy.setChirality(QUDA_CHIRALITY_RIGHT);
     SolverParam solverParam_L(*param);
     MultiShiftCG cg_m(m, mSloppy, solverParam_L);
-    cg_m(out_chi, in_def_right, p, r2_old);
+    cg_m(out_right, in_right, p, r2_old);
     solverParam_L.updateInvertParam(*param);
-    for (int i = 0; i < (param->num_offset); i++) { spinorChiralEmbed(out_right[i], out_chi[i], QUDA_CHIRALITY_RIGHT); }
   }
 
   if (flag_left) {
@@ -4462,15 +4400,13 @@ void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param
     mSloppy.setChirality(QUDA_CHIRALITY_LEFT);
     SolverParam solverParam_R(*param);
     MultiShiftCG cg_m(m, mSloppy, solverParam_R);
-    cg_m(out_chi, in_def_left, p, r2_old);
+    cg_m(out_left, in_left, p, r2_old);
     solverParam_R.updateInvertParam(*param);
-    for (int i = 0; i < (param->num_offset); i++) { spinorChiralEmbed(out_left[i], out_chi[i], QUDA_CHIRALITY_LEFT); }
   }
 
   if (param->compute_true_res) {
     // check each shift has the desired tolerance and use sequential CG to refine
     cudaParam.create = QUDA_ZERO_FIELD_CREATE;
-    ColorSpinorField r(cudaParam);
     QudaInvertParam refineparam = *param;
     refineparam.cuda_prec_sloppy = param->cuda_prec_refinement_sloppy;
     Dirac &dirac = *d;
@@ -4497,86 +4433,81 @@ void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param
         logQuda(QUDA_SUMMARIZE, "Refining shift %d: L2 residual %e / %e, heavy quark %e / %e (actual / requested)\n", i,
                 param->true_res_offset[i], param->tol_offset[i], rsd_hq, tol_hq);
 
-        // high-mode propagator
-        {
-          printfQuda("===============Compute high-mode propagator===============\n");
+        printfQuda("===============Compute high-mode propagator===============\n");
 
-          if (flag_right) {
-            printfQuda("===============Compute Left : %d===============\n", i);
+        if (flag_right) {
+          printfQuda("===============Compute Left : %d===============\n", i);
 
-            m.setChirality(QUDA_CHIRALITY_RIGHT);
-            mSloppy.setChirality(QUDA_CHIRALITY_RIGHT);
-            // need to curry in the shift if we are not doing staggered
-            if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
-              m.shift = param->offset[i] - param->offset[0];
-              mSloppy.shift = param->offset[i] - param->offset[0];
-            }
-            // SolverParam solverParam_L(*param);
-            SolverParam solverParam_L(refineparam);
-            solverParam_L.iter = 0;
-            solverParam_L.use_init_guess = QUDA_USE_INIT_GUESS_YES;
-            solverParam_L.tol = (param->tol_offset[i] > 0.0 ? param->tol_offset[i] : iter_tol); // set L2 tolerance
-            solverParam_L.tol_hq = param->tol_hq_offset[i]; // set heavy quark tolerance
-            solverParam_L.delta = param->reliable_delta_refinement;
-
-            CG cg_L(m, mSloppy, mSloppy, mSloppy, solverParam_L);
-            if (i == 0)
-              cg_L(out_chi[i], in_def_right, p[i], r2_old[i]);
-            else
-              cg_L(out_chi[i], in_def_right);
-            spinorChiralEmbed(out_right[i], out_chi[i], QUDA_CHIRALITY_RIGHT);
-
-            solverParam_L.true_res_offset[i] = solverParam_L.true_res[i];
-            solverParam_L.true_res_hq_offset[i] = solverParam_L.true_res_hq[i];
-            solverParam_L.updateInvertParam(*param, i);
+          m.setChirality(QUDA_CHIRALITY_RIGHT);
+          mSloppy.setChirality(QUDA_CHIRALITY_RIGHT);
+          // need to curry in the shift if we are not doing staggered
+          if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
+            m.shift = param->offset[i] - param->offset[0];
+            mSloppy.shift = param->offset[i] - param->offset[0];
           }
+          // SolverParam solverParam_L(*param);
+          SolverParam solverParam_L(refineparam);
+          solverParam_L.iter = 0;
+          solverParam_L.use_init_guess = QUDA_USE_INIT_GUESS_YES;
+          solverParam_L.tol = (param->tol_offset[i] > 0.0 ? param->tol_offset[i] : iter_tol); // set L2 tolerance
+          solverParam_L.tol_hq = param->tol_hq_offset[i]; // set heavy quark tolerance
+          solverParam_L.delta = param->reliable_delta_refinement;
 
-          if (flag_left) {
-            printfQuda("===============Compute Right : %d===============\n", i);
+          CG cg_L(m, mSloppy, mSloppy, mSloppy, solverParam_L);
+          if (i == 0)
+            cg_L(out_right[i], in_right, p[i], r2_old[i]);
+          else
+            cg_L(out_right[i], in_right);
 
-            m.setChirality(QUDA_CHIRALITY_LEFT);
-            mSloppy.setChirality(QUDA_CHIRALITY_LEFT);
-            // need to curry in the shift if we are not doing staggered
-            if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
-              m.shift = param->offset[i] - param->offset[0];
-              mSloppy.shift = param->offset[i] - param->offset[0];
-            }
-            // SolverParam solverParam_R(*param);
-            SolverParam solverParam_R(refineparam);
-            solverParam_R.iter = 0;
-            solverParam_R.use_init_guess = QUDA_USE_INIT_GUESS_YES;
-            solverParam_R.tol = (param->tol_offset[i] > 0.0 ? param->tol_offset[i] : iter_tol); // set L2 tolerance
-            solverParam_R.tol_hq = param->tol_hq_offset[i]; // set heavy quark tolerance
-            solverParam_R.delta = param->reliable_delta_refinement;
+          solverParam_L.true_res_offset[i] = solverParam_L.true_res[i];
+          solverParam_L.true_res_hq_offset[i] = solverParam_L.true_res_hq[i];
+          solverParam_L.updateInvertParam(*param, i);
+        }
 
-            CG cg_R(m, mSloppy, mSloppy, mSloppy, solverParam_R);
-            if (i == 0)
-              cg_R(out_chi[i], in_def_left, p[i], r2_old[i]);
-            else
-              cg_R(out_chi[i], in_def_left);
-            spinorChiralEmbed(out_left[i], out_chi[i], QUDA_CHIRALITY_LEFT);
+        if (flag_left) {
+          printfQuda("===============Compute Right : %d===============\n", i);
 
-            solverParam_R.true_res_offset[i] = solverParam_R.true_res[i];
-            solverParam_R.true_res_hq_offset[i] = solverParam_R.true_res_hq[i];
-            solverParam_R.updateInvertParam(*param, i);
+          m.setChirality(QUDA_CHIRALITY_LEFT);
+          mSloppy.setChirality(QUDA_CHIRALITY_LEFT);
+          // need to curry in the shift if we are not doing staggered
+          if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
+            m.shift = param->offset[i] - param->offset[0];
+            mSloppy.shift = param->offset[i] - param->offset[0];
           }
+          // SolverParam solverParam_R(*param);
+          SolverParam solverParam_R(refineparam);
+          solverParam_R.iter = 0;
+          solverParam_R.use_init_guess = QUDA_USE_INIT_GUESS_YES;
+          solverParam_R.tol = (param->tol_offset[i] > 0.0 ? param->tol_offset[i] : iter_tol); // set L2 tolerance
+          solverParam_R.tol_hq = param->tol_hq_offset[i]; // set heavy quark tolerance
+          solverParam_R.delta = param->reliable_delta_refinement;
+
+          CG cg_R(m, mSloppy, mSloppy, mSloppy, solverParam_R);
+          if (i == 0)
+            cg_R(out_left[i], in_left, p[i], r2_old[i]);
+          else
+            cg_R(out_left[i], in_left);
+
+          solverParam_R.true_res_offset[i] = solverParam_R.true_res[i];
+          solverParam_R.true_res_hq_offset[i] = solverParam_R.true_res_hq[i];
+          solverParam_R.updateInvertParam(*param, i);
         }
       }
     }
   }
 
   for (int i = 0; i < param->num_offset; i++) {
+    if (flag_right) {
+      spinorChiralEmbed(tmp, out_right[i], QUDA_CHIRALITY_RIGHT);
+      blas::xpy(tmp, x[i]);
+    }
+    if (flag_left) {
+      spinorChiralEmbed(tmp, out_left[i], QUDA_CHIRALITY_LEFT);
+      blas::xpy(tmp, x[i]);
+    }
     d->setMass(masses[i]);
-    // merge Left and Right
-    blas::axpbyz(1.0, out_right[i], 1.0, out_left[i], out_high[i]);
-    d->reconstruct(out_high[i], in_def, param->solution_type);
-    x[i] = out_high[i];
+    d->reconstruct(x[i], b, param->solution_type);
   }
-
-  // merge low-mode and high-mode propagator
-  // for (int i = 0; i < (param->num_offset); i++){
-  //   blas::axpby(1.0, out_high[i], 1.0, x[i]);
-  // }
 
   // restore shifts
   for (int i = 0; i < param->num_offset; i++) param->offset[i] = unscaled_shifts[i];

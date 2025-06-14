@@ -107,7 +107,7 @@ namespace quda {
 
         auto &x0 = x[0];
         constexpr bool site_unroll_check = !std::is_same<store_t, y_store_t>::value || isFixed<store_t>::value;
-        if (site_unroll_check && (x0.Ncolor() != 3 || x0.Nspin() == 2))
+        if (site_unroll_check && (x0.Ncolor() != 3 && x0.Nspin() == 2))
           errorQuda("site unroll not supported for nSpin = %d nColor = %d", x0.Nspin(), x0.Ncolor());
 
         TuneParam tp = tuneLaunch(*this, getTuning(), getVerbosity());

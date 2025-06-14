@@ -414,10 +414,10 @@ namespace quda {
       // compute the true residuals
       mat(r, x);
       auto true_r2 = blas::xmyNorm(b, r);
-      // auto hq = blas::HeavyQuarkResidualNorm(x, r);
+      auto hq = blas::HeavyQuarkResidualNorm(x, r);
       for (auto i = 0u; i < b.size(); i++) {
         param.true_res[i] = sqrt(true_r2[i] / b2[i]);
-        // param.true_res_hq[i] = sqrt(hq[i].z);
+        param.true_res_hq[i] = sqrt(hq[i].z);
       }
     }
 

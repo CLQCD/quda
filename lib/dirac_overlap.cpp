@@ -25,8 +25,6 @@ namespace quda
   // Defined as 0.5 * (1 + \gamma_5 sign(\gamma_5 W)) where W is the Wilson M operator
   void DiracOverlap::Dslash(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, QudaParity) const
   {
-    printfQuda("Entering DiracOverlap::Dslash\n");
-
     auto b1 = getFieldTmp(out);
     auto b2 = getFieldTmp(out);
     auto Mb1 = getFieldTmp(out);
@@ -97,8 +95,6 @@ namespace quda
   void DiracOverlap::DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
                                 QudaParity parity, cvector_ref<const ColorSpinorField> &x, double scale) const
   {
-    printfQuda("Entering DiracOverlap::DslashXpay\n");
-
     Dslash(out, in, parity);
     if (scale != 0.0) { blas::axpy(scale, x, out); }
   }
@@ -106,8 +102,6 @@ namespace quda
   // Defined as m / (2\rho - m) + D
   void DiracOverlap::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
-    printfQuda("Entering DiracOverlap::M\n");
-
     const double two_rho = 8.0 - 1.0 / kappa;
     DslashXpay(out, in, QUDA_INVALID_PARITY, in, mass / (two_rho - mass));
   }
@@ -115,8 +109,6 @@ namespace quda
   // Defined as m^2 / (2\rho^2 - m^2) + DdagD
   void DiracOverlap::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
-    printfQuda("Entering DiracOverlap::MdagM\n");
-
     const double two_rho = 8.0 - 1.0 / kappa;
     auto tmp = getFieldTmp(out);
     Dslash(tmp, in, QUDA_INVALID_PARITY);
@@ -127,8 +119,6 @@ namespace quda
   // (1\pm\gamma_5)/2 DdagD (1\pm\gamma_5)/2 = (1\pm\gamma_5)/2 D (1\pm\gamma_5)/2
   void DiracOverlap::MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
-    printfQuda("Entering DiracOverlap::MdagMChiral\n");
-
     const double two_rho = 8.0 - 1.0 / kappa;
     DslashXpay(out, in, QUDA_INVALID_PARITY, in, (mass * mass) / (two_rho * two_rho - mass * mass));
   }

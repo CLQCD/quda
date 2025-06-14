@@ -459,11 +459,7 @@ namespace quda {
           }
           double true_res = blas::xmyNorm(b, r);
           param.true_res_offset[i] = sqrt(true_res / b2);
-          if (x[i].Nspin() != 2) { // 只在nSpin=4时计算重夸克残差
-            param.true_res_hq_offset[i] = sqrt(blas::HeavyQuarkResidualNorm(x[i], r).z);
-          } else {
-            param.true_res_hq_offset[i] = 0.0;
-          }
+          param.true_res_hq_offset[i] = sqrt(blas::HeavyQuarkResidualNorm(x[i], r).z);
         } else {
           param.true_res_offset[i] = std::numeric_limits<double>::infinity();
           param.true_res_hq_offset[i] = std::numeric_limits<double>::infinity();

@@ -1,9 +1,3 @@
-/**
-   @file overlap.h
-
-   @section DESCRIPTION
-*/
-
 #pragma once
 
 #include <eigen_helper.h>
@@ -77,8 +71,8 @@ namespace quda
     if (abs(res_l) < 1e-15) return x_l;
     if (abs(res_r) < 1e-15) return x_r;
     if (res_r * res_l > 0)
-      printf("ERROR: findRoot with derivative=%d called with wrong ends: (%e %e)->(%e %e)\n", derivative, x_l, x_r,
-             res_l, res_r);
+      errorQuda("ERROR: findRoot with derivative=%d called with wrong ends: (%e %e)->(%e %e)\n", derivative, x_l, x_r,
+                res_l, res_r);
     for (int i = 0; i < 10; i++) {
       x_m = (res_l * x_r - res_r * x_l) / (res_l - res_r);
       res_m = residual(x_m, c, n, epsilon, derivative);
