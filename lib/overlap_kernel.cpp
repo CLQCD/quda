@@ -124,15 +124,14 @@ namespace quda
     evecs(evecs),
     evals(evals.size()),
     kappa(kappa),
+    epsilon(pow(evals.back().real() / (1.0 + 8.0 * kappa), 2)),
     remez_tol(remez_tol),
     remez_coeff(remez_tol.size()),
     remez_order(remez_tol.size())
   {
-    const double lambda_max = 1 + 8 * kappa;
-    for (int i = 0; i < evals.size(); i++) { this->evals[i] = evals[i].real() / lambda_max; }
-    const double evals_max = this->evals[evals.size() - 1];
+    for (int i = 0; i < evals.size(); i++) { this->evals[i] = evals[i].real(); }
     for (int i = 0; i < remez_tol.size(); i++) {
-      remez_coeff[i] = minimaxApproximationRemez(remez_tol[i], evals_max * evals_max);
+      remez_coeff[i] = minimaxApproximationRemez(remez_tol[i], epsilon);
       remez_order[i] = remez_coeff[i].size() - 1;
     }
   }
@@ -141,6 +140,7 @@ namespace quda
     evecs(overlap_kernel->evecs.size()),
     evals(overlap_kernel->evals),
     kappa(overlap_kernel->kappa),
+    epsilon(overlap_kernel->epsilon),
     remez_tol(overlap_kernel->remez_tol),
     remez_coeff(overlap_kernel->remez_coeff),
     remez_order(overlap_kernel->remez_order)

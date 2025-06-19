@@ -15,6 +15,7 @@ namespace quda
     std::vector<ColorSpinorField> evecs;
     std::vector<double> evals;
     double kappa;
+    double epsilon;
     std::vector<double> remez_tol;
     std::vector<std::vector<double>> remez_coeff;
     std::vector<int> remez_order;
@@ -24,8 +25,7 @@ namespace quda
     OverlapKernel(OverlapKernel *overlap_kernel, QudaPrecision precision);
     ~OverlapKernel() = default;
 
-    QudaPrecision Precision() const { return evecs[0].Precision(); }
-    size_t Size() const { return evecs.size(); }
-    double Kappa() const { return kappa; }
+    inline QudaPrecision Precision() const { return evecs[0].Precision(); }
+    inline double Kappa() const { return kappa; }
   };
 } // namespace quda

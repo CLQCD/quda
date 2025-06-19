@@ -33,6 +33,20 @@ namespace quda
       for (auto &b2i : b2) printfQuda("Mass rescale: norm of source in = %g\n", b2i);
     }
 
+    // overlap dslash uses mass normalization internally
+    if (param.dslash_type == QUDA_OVERLAP_DSLASH) {
+      switch (param.solution_type) {
+      case QUDA_MAT_SOLUTION:
+        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(param.mass, b);
+        break;
+      case QUDA_MATDAG_MAT_SOLUTION:
+        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(param.mass * param.mass, b);
+        break;
+      default: errorQuda("Not implemented");
+      }
+      return;
+    }
+
     // staggered dslash uses mass normalization internally
     if (param.dslash_type == QUDA_ASQTAD_DSLASH || param.dslash_type == QUDA_STAGGERED_DSLASH) {
       switch (param.solution_type) {
@@ -125,6 +139,14 @@ namespace quda
     }
   }
 
+  void setChirality(DiracMdagMChiral &mat, DiracMdagMChiral &matSloppy, DiracMdagMChiral &matPre, DiracMdagMChiral &matEig, QudaChirality chirality)
+  {
+    mat.setChirality(chirality);
+    matSloppy.setChirality(chirality);
+    matPre.setChirality(chirality);
+    matEig.setChirality(chirality);
+  }
+
   void solve(cvector_ref<ColorSpinorField> &x, cvector_ref<ColorSpinorField> &b, Dirac &dirac, Dirac &diracSloppy,
              Dirac &diracPre, Dirac &diracEig, QudaInvertParam &param)
   {
@@ -132,7 +154,8 @@ namespace quda
 
     bool mat_solution = (param.solution_type == QUDA_MAT_SOLUTION) || (param.solution_type == QUDA_MATPC_SOLUTION);
     bool direct_solve = (param.solve_type == QUDA_DIRECT_SOLVE) || (param.solve_type == QUDA_DIRECT_PC_SOLVE);
-    bool norm_error_solve = (param.solve_type == QUDA_NORMERR_SOLVE) || (param.solve_type == QUDA_NORMERR_PC_SOLVE);
+    bool norm_error_solve = (param.solve_type == QUDA_NORMERR_SOLVE) || (param.solve_type == QUDA_NORMERR_PC_SOLVE) || (param.solve_type == QUDA_NORMERR_CHIRAL_SOLVE);
+    bool chiral_solve = (param.solve_type == QUDA_NORMOP_CHIRAL_SOLVE);
 
     auto nb = blas::norm2(b);
     for (auto &bi : nb) {
@@ -212,7 +235,96 @@ namespace quda
       solverParam.updateInvertParam(param);
     }
 
-    if (direct_solve) {
+    if (chiral_solve && !direct_solve) {
+      DiracMdagMChiral m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
+      auto tmp = getFieldTmp(cvector_ref<ColorSpinorField>(in));
+      ColorSpinorParam chiralParam(in[0]);
+      chiralParam.create = QUDA_NULL_FIELD_CREATE;
+      chiralParam.nSpin = 2;
+      chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+      auto in_chiral = getFieldTmp<ColorSpinorField>(in.size(), chiralParam);
+      auto out_chiral = getFieldTmp<ColorSpinorField>(out.size(), chiralParam);
+      SolverParam solverParam(param);
+
+      printfQuda("===============Pre-setttings for the chiral overlap operator===============\n");
+
+      // 加载 overlap 低模部分特征系统
+      Complex *evals_ov;
+      Complex **evecs_ov;
+      int n_low = 0;
+
+      if (param.ov_n_ev > 0 && param.ov_eigvals != NULL && param.ov_eigvecs != NULL) {
+        n_low = param.ov_n_ev;
+        evals_ov = reinterpret_cast<Complex *>(param.ov_eigvals);
+        evecs_ov = reinterpret_cast<Complex **>(param.ov_eigvecs);
+      } else {
+        printfQuda("No overlap eigensystem loaded.\n");
+      }
+
+      ColorSpinorParam gpuParam(in[0]);
+      gpuParam.create = QUDA_COPY_FIELD_CREATE;
+
+      std::vector<ColorSpinorField> gpu_evecs(n_low);
+      {
+        ColorSpinorParam tmpParam(nullptr, param, gpuParam.x, false, QUDA_CPU_FIELD_LOCATION);
+        tmpParam.setPrecision(gpuParam.Precision());
+        tmpParam.create = QUDA_REFERENCE_FIELD_CREATE;
+
+        for (int i = 0; i < n_low; i++) {
+          tmpParam.v = evecs_ov[i];
+
+          ColorSpinorField cpu_ref(tmpParam);
+          gpuParam.field = &cpu_ref;
+          gpuParam.create = QUDA_COPY_FIELD_CREATE;
+          gpu_evecs[i] = ColorSpinorField(gpuParam);
+        }
+      }
+
+      blas::zero(out);
+
+      const double two_rho = 8.0 - 1.0 / param.kappa;
+      const double mass = param.mass;
+      const double offset = (mass * mass) / (two_rho * two_rho - mass * mass);
+
+      // high-mode propagator
+      for (int chirality_ = -1; chirality_ <= 1; chirality_ += 2) {
+        QudaChirality chirality = static_cast<QudaChirality>(chirality_);
+
+        printfQuda("===============Compute low-mode propagator===============\n");
+        spinorChiralProject(in_chiral[0], in[0], chirality);
+        for (int i = 0; i < n_low; i++) {
+          spinorChiralProject(out_chiral[0], gpu_evecs[i], chirality);
+          // 计算内积因子
+          auto alpha = blas::cDotProduct(out_chiral, in_chiral);
+          Complex lambda = evals_ov[i] / two_rho;
+          double inv_m = 1.0 / (offset + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
+          if (sqrt(std::fabs(lambda.real())) <= 100 * std::fabs(lambda.imag())) {
+            for (auto &v: alpha) { v *= 2.0; }
+          }
+          blas::caxpy(-alpha, out_chiral, in_chiral);
+          spinorChiralEmbed(tmp[0], out_chiral[0], chirality);
+          blas::caxpy(inv_m * alpha, tmp, out[0]);
+        }
+
+        printfQuda("===============Compute high-mode propagator===============\n");
+        if (blas::norm2(in_chiral) > 1e-6) {
+          printfQuda("===============Compute Chiral %d===============\n", chirality_);
+
+          setChirality(m, mSloppy, mPre, mEig, chirality);
+          Solver *solve = Solver::create(solverParam, m, mSloppy, mPre, mEig);
+          (*solve)(out_chiral, in_chiral);
+          delete solve;
+          solverParam.updateInvertParam(param);
+          spinorChiralEmbed(tmp[0], out_chiral[0], chirality);
+          blas::xpy(tmp, out);
+        }
+      }
+
+      if (mat_solution) {
+        blas::copy(tmp, out);
+        dirac.Mdag(out, tmp);
+      }
+    } else if (direct_solve) {
       DiracM m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
       SolverParam solverParam(param);
 

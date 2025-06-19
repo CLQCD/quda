@@ -358,7 +358,7 @@ namespace quda {
     /**
        @brief Apply MdagM on single chirality
     */
-    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
+    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, QudaChirality chirality) const
     {
       errorQuda("Not implemented!");
     }
@@ -1420,7 +1420,7 @@ public:
   };
 
   // Full overlap
-  class DiracOverlap : public DiracWilson
+  class DiracOverlap : public Dirac
   {
 
   protected:
@@ -1436,15 +1436,15 @@ public:
                         QudaParity parity) const override;
     virtual void DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
                             QudaParity parity, cvector_ref<const ColorSpinorField> &x, double k) const override;
-    virtual void M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
-    virtual void MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
-    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const;
+    virtual void M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const override;
+    virtual void MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const override;
+    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, QudaChirality chirality) const override;
 
-    virtual void prepare(cvector_ref<ColorSpinorField> &sol, cvector_ref<ColorSpinorField> &src,
+    virtual void prepare(cvector_ref<ColorSpinorField> &out, cvector_ref<ColorSpinorField> &in,
                          cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
-                         const QudaSolutionType) const;
+                         const QudaSolutionType solType) const override;
     virtual void reconstruct(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
-                             const QudaSolutionType) const;
+                             const QudaSolutionType solType) const override;
 
     virtual int getStencilSteps() const override { return 2 * (overlap_kernel->remez_order[0] + 1) + 1; }
     virtual QudaDiracType getDiracType() const { return QUDA_OVERLAP_DIRAC; }
@@ -2668,15 +2668,7 @@ public:
      */
     void operator()(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const override
     {
-      ColorSpinorParam fullParam(out[0]);
-      fullParam.nSpin = 4;
-      fullParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
-      auto in_full = getFieldTmp<ColorSpinorField>(out.size(), fullParam);
-      auto out_full = getFieldTmp<ColorSpinorField>(out.size(), fullParam);
-
-      spinorChiralEmbed(in_full[0], in[0], chirality);
-      dirac->MdagMChiral(out_full, in_full);
-      spinorChiralProject(out[0], out_full[0], chirality);
+      dirac->MdagMChiral(out, in, chirality);
       if (shift != 0.0) blas::axpy(shift, in, out);
     }
 
