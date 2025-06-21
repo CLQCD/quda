@@ -1,5 +1,3 @@
-#pragma once
-
 #include <eigen_helper.h>
 #include <overlap_kernel.h>
 
@@ -10,15 +8,16 @@ namespace quda
   double Tn(double x, int n)
   {
     if (abs(x) <= 1.0) { return cos(n * std::acos(x)); }
-    double T0 = 1, T1 = x, Tk;
+    double T0 = 1, T1 = x, Tk = 2 * x * x - 1;
     switch (n) {
     case 0: return T0;
     case 1: return T1;
+    case 2: return Tk;
     default:
-      for (int k = 2; k <= n; ++k) {
-        Tk = 2 * x * T1 - T0;
+      for (int k = 3; k <= n; ++k) {
         T0 = T1;
         T1 = Tk;
+        Tk = 2 * x * T1 - T0;
       }
       return Tk;
     }
@@ -100,7 +99,8 @@ namespace quda
       y[i] = (z[i] * (1 - epsilon) + (1 + epsilon)) / 2;
     }
 
-    for (int iter = 0; iter < max_iter; ++iter) {
+    int iter = 0;
+    while (iter < max_iter) {
       // Construct matrix M_ij=\sqrt{y_i}T_j(z_i)
       for (int i = 0; i < n + 1; ++i) {
         for (int j = 0; j < n; ++j) { M_eigen(i, j) = sqrt(y[i]) * Tn(z[i], j); }
@@ -114,13 +114,15 @@ namespace quda
       for (int i = n - 1; i > 0; --i) { y[i] = findRoot(b[i], b[i - 1], c, n - 1, epsilon, true); }
       for (int i = 1; i < n; ++i) { z[i] = (2 * y[i] - (1 + epsilon)) / (1 - epsilon); }
       for (int i = 0; i < n + 1; ++i) { b[i] = abs(1 - sqrt(y[i]) * ciTi(z[i], c, n - 1)); }
-      if (*std::max_element(b.begin(), b.end()) <= delta) { return {c.begin(), c.begin() + n}; }
+      if (*std::max_element(b.begin(), b.end()) <= delta) { break; }
+      iter += 1;
     }
-    errorQuda("minimaxApproximationRemez can not converge");
+    if (iter == max_iter) { errorQuda("minimaxApproximationRemez can not converge"); }
+    return {c.begin(), c.begin() + n};
   }
 
-  OverlapKernel::OverlapKernel(std::vector<ColorSpinorField> &evecs, std::vector<Complex> &evals, double kappa,
-                               std::vector<double> remez_tol) :
+  OverlapKernel::OverlapKernel(cvector<ColorSpinorField> &evecs, cvector<Complex> &evals, double kappa,
+                               cvector<double> remez_tol) :
     evecs(evecs),
     evals(evals.size()),
     kappa(kappa),
@@ -129,14 +131,14 @@ namespace quda
     remez_coeff(remez_tol.size()),
     remez_order(remez_tol.size())
   {
-    for (int i = 0; i < evals.size(); i++) { this->evals[i] = evals[i].real(); }
-    for (int i = 0; i < remez_tol.size(); i++) {
+    for (size_t i = 0; i < evals.size(); i++) { this->evals[i] = evals[i].real(); }
+    for (size_t i = 0; i < remez_tol.size(); i++) {
       remez_coeff[i] = minimaxApproximationRemez(remez_tol[i], epsilon);
       remez_order[i] = remez_coeff[i].size() - 1;
     }
   }
 
-  OverlapKernel::OverlapKernel(OverlapKernel *overlap_kernel, QudaPrecision precision) :
+  OverlapKernel::OverlapKernel(const OverlapKernel *overlap_kernel, QudaPrecision precision) :
     evecs(overlap_kernel->evecs.size()),
     evals(overlap_kernel->evals),
     kappa(overlap_kernel->kappa),
@@ -147,7 +149,7 @@ namespace quda
   {
     ColorSpinorParam param(overlap_kernel->evecs[0]);
     param.setPrecision(precision, precision, true);
-    for (int i = 0; i < evecs.size(); i++) {
+    for (size_t i = 0; i < evecs.size(); i++) {
       evecs[i] = ColorSpinorField(param);
       evecs[i].copy(overlap_kernel->evecs[i]);
     }

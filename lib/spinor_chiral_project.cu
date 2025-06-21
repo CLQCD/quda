@@ -16,7 +16,7 @@ namespace quda
 
   public:
     SpinorChiralEmbed(ColorSpinorField &out, const ColorSpinorField &in) :
-      TunableKernel2D(in, in.SiteSubset()), in(in), out(out)
+      TunableKernel2D(in, in.SiteSubset()), out(out), in(in)
     {
       apply(device::get_default_stream());
     }
@@ -83,7 +83,7 @@ namespace quda
 
   public:
     SpinorChiralProject(ColorSpinorField &out, const ColorSpinorField &in) :
-      TunableKernel2D(in, in.SiteSubset()), in(in), out(out)
+      TunableKernel2D(in, in.SiteSubset()), out(out), in(in)
     {
       apply(device::get_default_stream());
     }

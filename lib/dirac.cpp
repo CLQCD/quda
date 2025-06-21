@@ -48,6 +48,7 @@ namespace quda {
     type(dirac.type),
     halo_precision(dirac.halo_precision),
     commDim(dirac.commDim),
+    use_mobius_fused_kernel(dirac.use_mobius_fused_kernel),
     distance_pc_alpha0(dirac.distance_pc_alpha0),
     distance_pc_t0(dirac.distance_pc_t0),
     profile("Dirac", false)
@@ -72,6 +73,7 @@ namespace quda {
       symmetric = dirac.symmetric;
       dagger = dirac.dagger;
       commDim = dirac.commDim;
+      use_mobius_fused_kernel = dirac.use_mobius_fused_kernel;
       distance_pc_alpha0 = dirac.distance_pc_alpha0;
       distance_pc_t0 = dirac.distance_pc_t0;
       profile = dirac.profile;

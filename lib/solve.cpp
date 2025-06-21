@@ -154,7 +154,8 @@ namespace quda
 
     bool mat_solution = (param.solution_type == QUDA_MAT_SOLUTION) || (param.solution_type == QUDA_MATPC_SOLUTION);
     bool direct_solve = (param.solve_type == QUDA_DIRECT_SOLVE) || (param.solve_type == QUDA_DIRECT_PC_SOLVE);
-    bool norm_error_solve = (param.solve_type == QUDA_NORMERR_SOLVE) || (param.solve_type == QUDA_NORMERR_PC_SOLVE) || (param.solve_type == QUDA_NORMERR_CHIRAL_SOLVE);
+    bool norm_error_solve = (param.solve_type == QUDA_NORMERR_SOLVE) || (param.solve_type == QUDA_NORMERR_PC_SOLVE)
+      || (param.solve_type == QUDA_NORMERR_CHIRAL_SOLVE);
     bool chiral_solve = (param.solve_type == QUDA_NORMOP_CHIRAL_SOLVE);
 
     auto nb = blas::norm2(b);
@@ -237,17 +238,10 @@ namespace quda
 
     if (chiral_solve && !direct_solve) {
       DiracMdagMChiral m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
-      auto tmp = getFieldTmp(cvector_ref<ColorSpinorField>(in));
-      ColorSpinorParam chiralParam(in[0]);
-      chiralParam.create = QUDA_NULL_FIELD_CREATE;
-      chiralParam.nSpin = 2;
-      chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-      auto in_chiral = getFieldTmp<ColorSpinorField>(in.size(), chiralParam);
-      auto out_chiral = getFieldTmp<ColorSpinorField>(out.size(), chiralParam);
+      auto tmp = getFieldTmp(in[0]);
       SolverParam solverParam(param);
 
       printfQuda("===============Pre-setttings for the chiral overlap operator===============\n");
-
       // 加载 overlap 低模部分特征系统
       Complex *evals_ov;
       Complex **evecs_ov;
@@ -258,7 +252,7 @@ namespace quda
         evals_ov = reinterpret_cast<Complex *>(param.ov_eigvals);
         evecs_ov = reinterpret_cast<Complex **>(param.ov_eigvecs);
       } else {
-        printfQuda("No overlap eigensystem loaded.\n");
+        errorQuda("No overlap eigensystem loaded.\n");
       }
 
       ColorSpinorParam gpuParam(in[0]);
@@ -281,45 +275,59 @@ namespace quda
       }
 
       blas::zero(out);
-
-      const double two_rho = 8.0 - 1.0 / param.kappa;
-      const double mass = param.mass;
-      const double offset = (mass * mass) / (two_rho * two_rho - mass * mass);
-
-      // high-mode propagator
-      for (int chirality_ = -1; chirality_ <= 1; chirality_ += 2) {
-        QudaChirality chirality = static_cast<QudaChirality>(chirality_);
-
-        printfQuda("===============Compute low-mode propagator===============\n");
-        spinorChiralProject(in_chiral[0], in[0], chirality);
-        for (int i = 0; i < n_low; i++) {
-          spinorChiralProject(out_chiral[0], gpu_evecs[i], chirality);
-          // 计算内积因子
-          auto alpha = blas::cDotProduct(out_chiral, in_chiral);
-          Complex lambda = evals_ov[i] / two_rho;
-          double inv_m = 1.0 / (offset + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
-          if (sqrt(std::fabs(lambda.real())) <= 100 * std::fabs(lambda.imag())) {
-            for (auto &v: alpha) { v *= 2.0; }
+      ColorSpinorParam chiralParam(in[0]);
+      chiralParam.nSpin = 2;
+      chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+      for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
+        // high-mode propagator
+        std::vector<size_t> in_idx;
+        auto in_chiral = getFieldTmp<ColorSpinorField>(0, chiralParam);
+        for (size_t i = 0; i < in.size(); i++) {
+          auto tmp_chiral = getFieldTmp<ColorSpinorField>(chiralParam);
+          spinorChiralProject(tmp_chiral, in[i], chirality);
+          if (blas::norm2(static_cast<ColorSpinorField &>(tmp_chiral)) / nb[i] > 1e-16) {
+            in_idx.push_back(i);
+            in_chiral.push_back(std::move(tmp_chiral));
           }
-          blas::caxpy(-alpha, out_chiral, in_chiral);
-          spinorChiralEmbed(tmp[0], out_chiral[0], chirality);
-          blas::caxpy(inv_m * alpha, tmp, out[0]);
         }
+        if (in_chiral.size() > 0) {
+          printfQuda("===============Compute Chiral %d===============\n", chirality);
+          auto tmp_chiral = getFieldTmp<ColorSpinorField>(chiralParam);
+          auto out_chiral = getFieldTmp<ColorSpinorField>(in_chiral.size(), chiralParam);
 
-        printfQuda("===============Compute high-mode propagator===============\n");
-        if (blas::norm2(in_chiral) > 1e-6) {
-          printfQuda("===============Compute Chiral %d===============\n", chirality_);
+          printfQuda("===============Compute low-mode propagator===============\n");
+          for (int i = 0; i < n_low; i++) {
+            spinorChiralProject(tmp_chiral, gpu_evecs[i], chirality);
+            // 计算内积因子
+            std::vector<Complex> alpha;
+            blas::block::cDotProduct(alpha, tmp_chiral, in_chiral);
+            Complex lambda = evals_ov[i];
+            if (sqrt(std::fabs(lambda.real())) <= 100 * std::fabs(lambda.imag())) {
+              for (auto &v : alpha) { v *= -2.0; }
+            } else {
+              for (auto &v : alpha) { v *= -1.0; }
+            }
+            blas::block::caxpy(alpha, tmp_chiral, in_chiral);
+            const double mass = param.mass;
+            const double offset = (mass * mass) / (1.0 - mass * mass);
+            const double inv_m = 1.0 / (offset + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
+            for (auto &v : alpha) { v *= -inv_m; }
+            spinorChiralEmbed(tmp, tmp_chiral, chirality);
+            blas::block::caxpy(alpha, tmp, out);
+          }
 
+          printfQuda("===============Compute high-mode propagator===============\n");
           setChirality(m, mSloppy, mPre, mEig, chirality);
           Solver *solve = Solver::create(solverParam, m, mSloppy, mPre, mEig);
           (*solve)(out_chiral, in_chiral);
           delete solve;
           solverParam.updateInvertParam(param);
-          spinorChiralEmbed(tmp[0], out_chiral[0], chirality);
-          blas::xpy(tmp, out);
+          for (size_t i = 0; i < out_chiral.size(); i++) {
+            spinorChiralEmbed(tmp, out_chiral[i], chirality);
+            blas::xpy(tmp, out[in_idx[i]]);
+          }
         }
       }
-
       if (mat_solution) {
         blas::copy(tmp, out);
         dirac.Mdag(out, tmp);

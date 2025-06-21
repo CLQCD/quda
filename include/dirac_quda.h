@@ -358,7 +358,7 @@ namespace quda {
     /**
        @brief Apply MdagM on single chirality
     */
-    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, QudaChirality chirality) const
+    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &, cvector_ref<const ColorSpinorField> &, QudaChirality) const
     {
       errorQuda("Not implemented!");
     }
@@ -1438,7 +1438,8 @@ public:
                             QudaParity parity, cvector_ref<const ColorSpinorField> &x, double k) const override;
     virtual void M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const override;
     virtual void MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const override;
-    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, QudaChirality chirality) const override;
+    virtual void MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
+                             QudaChirality chirality) const override;
 
     virtual void prepare(cvector_ref<ColorSpinorField> &out, cvector_ref<ColorSpinorField> &in,
                          cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b,
@@ -2655,7 +2656,7 @@ public:
   class DiracMdagMChiral : public DiracMatrix
   {
   protected:
-    QudaChirality chirality; // chirality of the operator, used to determine how to apply gamma5
+    QudaChirality chirality;
 
   public:
     DiracMdagMChiral(const Dirac &d) : DiracMatrix(d) { }
@@ -2686,7 +2687,7 @@ public:
     */
     virtual bool hermitian() const override { return true; }
 
-    void setChirality(QudaChirality chirality) { this->chirality = chirality; }
+    void setChirality(QudaChirality chirality_in) { chirality = chirality_in; }
   };
 
   /**
