@@ -139,7 +139,8 @@ namespace quda
     }
   }
 
-  void setChirality(DiracMdagMChiral &mat, DiracMdagMChiral &matSloppy, DiracMdagMChiral &matPre, DiracMdagMChiral &matEig, QudaChirality chirality)
+  void setChirality(DiracMdagMChiral &mat, DiracMdagMChiral &matSloppy, DiracMdagMChiral &matPre,
+                    DiracMdagMChiral &matEig, QudaChirality chirality)
   {
     mat.setChirality(chirality);
     matSloppy.setChirality(chirality);
@@ -147,7 +148,9 @@ namespace quda
     matEig.setChirality(chirality);
   }
 
-  void splitChiral(std::vector<size_t> &idx_left, std::vector<ColorSpinorField> &in_left, std::vector<size_t> &idx_right, std::vector<ColorSpinorField> &in_right, cvector_ref<const ColorSpinorField> &in, std::vector<double> &nb)
+  void splitChiral(std::vector<size_t> &idx_left, std::vector<ColorSpinorField> &in_left,
+                   std::vector<size_t> &idx_right, std::vector<ColorSpinorField> &in_right,
+                   cvector_ref<const ColorSpinorField> &in, std::vector<double> &nb)
   {
     ColorSpinorParam chiralParam(in[0]);
     chiralParam.nSpin = 2;
@@ -174,7 +177,8 @@ namespace quda
     }
   }
 
-  void mergeChiral(std::vector<size_t> &idx_left, cvector_ref<ColorSpinorField> &out_left, std::vector<size_t> &idx_right, cvector_ref<ColorSpinorField> &out_right, cvector_ref<ColorSpinorField> &out)
+  void mergeChiral(std::vector<size_t> &idx_left, cvector_ref<ColorSpinorField> &out_left, std::vector<size_t> &idx_right,
+                   cvector_ref<ColorSpinorField> &out_right, cvector_ref<ColorSpinorField> &out)
   {
     auto tmp = getFieldTmp(out[0]);
     for (size_t i = 0; i < out_left.size(); i++) {

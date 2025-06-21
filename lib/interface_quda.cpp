@@ -1764,9 +1764,7 @@ namespace quda {
       memcpy(diracParam.b_5, inv_param->b_5, sizeof(Complex) * inv_param->Ls);
       memcpy(diracParam.c_5, inv_param->c_5, sizeof(Complex) * inv_param->Ls);
       break;
-    case QUDA_OVERLAP_DSLASH:
-      diracParam.type = QUDA_OVERLAP_DIRAC;
-      break;
+    case QUDA_OVERLAP_DSLASH: diracParam.type = QUDA_OVERLAP_DIRAC; break;
     case QUDA_STAGGERED_DSLASH:
       diracParam.type = pc ? QUDA_STAGGEREDPC_DIRAC : QUDA_STAGGERED_DIRAC;
       break;
@@ -3797,8 +3795,10 @@ void dslashMultiSrcQuda(void **_hp_x, void **_hp_b, QudaInvertParam *param, Quda
   callMultiSrcQuda(_hp_x, _hp_b, param, op, parity);
 }
 
-namespace quda {
-  void splitChiral(std::vector<ColorSpinorField> &b_left, std::vector<ColorSpinorField> &b_right, const ColorSpinorField &b, double nb)
+namespace quda
+{
+  void splitChiral(std::vector<ColorSpinorField> &b_left, std::vector<ColorSpinorField> &b_right,
+                   const ColorSpinorField &b, double nb)
   {
     ColorSpinorParam chiralParam(b);
     chiralParam.nSpin = 2;
@@ -3806,21 +3806,17 @@ namespace quda {
     {
       ColorSpinorField tmp_left(chiralParam);
       spinorChiralProject(tmp_left, b, QUDA_CHIRALITY_LEFT);
-      if (blas::norm2(tmp_left) / nb > 1e-16) {
-        b_left.push_back(std::move(tmp_left));
-      }
+      if (blas::norm2(tmp_left) / nb > 1e-16) { b_left.push_back(std::move(tmp_left)); }
     }
     {
       ColorSpinorField tmp_right(chiralParam);
       spinorChiralProject(tmp_right, b, QUDA_CHIRALITY_RIGHT);
-      if (blas::norm2(tmp_right) / nb > 1e-16) {
-        b_right.push_back(std::move(tmp_right));
-      }
+      if (blas::norm2(tmp_right) / nb > 1e-16) { b_right.push_back(std::move(tmp_right)); }
     }
-
   }
 
-  void mergeChiral(cvector_ref<ColorSpinorField> &x_left, cvector_ref<ColorSpinorField> &x_right, cvector_ref<ColorSpinorField> &x)
+  void mergeChiral(cvector_ref<ColorSpinorField> &x_left, cvector_ref<ColorSpinorField> &x_right,
+                   cvector_ref<ColorSpinorField> &x)
   {
     auto tmp = getFieldTmp(x[0]);
     for (size_t i = 0; i < x_left.size(); i++) {
@@ -3832,7 +3828,7 @@ namespace quda {
       blas::xpy(tmp, x[i]);
     }
   }
-}
+} // namespace quda
 
 /*!
  * Generic version of the multi-shift solver. Should work for
@@ -4177,7 +4173,8 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
         }
 
         // need to curry in the shift if we are not doing staggered
-        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH && param->dslash_type != QUDA_OVERLAP_DSLASH) {
+        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH
+            && param->dslash_type != QUDA_OVERLAP_DSLASH) {
           m->shift = param->offset[i];
           mSloppy->shift = param->offset[i];
         }
