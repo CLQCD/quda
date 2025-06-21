@@ -1765,7 +1765,6 @@ namespace quda {
       memcpy(diracParam.c_5, inv_param->c_5, sizeof(Complex) * inv_param->Ls);
       break;
     case QUDA_OVERLAP_DSLASH:
-      if (pc) { errorQuda("Preconditioned overlap dslash not supported"); }
       diracParam.type = QUDA_OVERLAP_DIRAC;
       break;
     case QUDA_STAGGERED_DSLASH:
@@ -3798,6 +3797,43 @@ void dslashMultiSrcQuda(void **_hp_x, void **_hp_b, QudaInvertParam *param, Quda
   callMultiSrcQuda(_hp_x, _hp_b, param, op, parity);
 }
 
+namespace quda {
+  void splitChiral(std::vector<ColorSpinorField> &b_left, std::vector<ColorSpinorField> &b_right, const ColorSpinorField &b, double nb)
+  {
+    ColorSpinorParam chiralParam(b);
+    chiralParam.nSpin = 2;
+    chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+    {
+      ColorSpinorField tmp_left(chiralParam);
+      spinorChiralProject(tmp_left, b, QUDA_CHIRALITY_LEFT);
+      if (blas::norm2(tmp_left) / nb > 1e-16) {
+        b_left.push_back(std::move(tmp_left));
+      }
+    }
+    {
+      ColorSpinorField tmp_right(chiralParam);
+      spinorChiralProject(tmp_right, b, QUDA_CHIRALITY_RIGHT);
+      if (blas::norm2(tmp_right) / nb > 1e-16) {
+        b_right.push_back(std::move(tmp_right));
+      }
+    }
+
+  }
+
+  void mergeChiral(cvector_ref<ColorSpinorField> &x_left, cvector_ref<ColorSpinorField> &x_right, cvector_ref<ColorSpinorField> &x)
+  {
+    auto tmp = getFieldTmp(x[0]);
+    for (size_t i = 0; i < x_left.size(); i++) {
+      spinorChiralEmbed(tmp, x_left[i], QUDA_CHIRALITY_LEFT);
+      blas::xpy(tmp, x[i]);
+    }
+    for (size_t i = 0; i < x_right.size(); i++) {
+      spinorChiralEmbed(tmp, x_right[i], QUDA_CHIRALITY_RIGHT);
+      blas::xpy(tmp, x[i]);
+    }
+  }
+}
+
 /*!
  * Generic version of the multi-shift solver. Should work for
  * most fermions. Note that offset[0] is not folded into the mass parameter.
@@ -3832,6 +3868,7 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
   bool pc_solve = (param->solve_type == QUDA_DIRECT_PC_SOLVE) || (param->solve_type == QUDA_NORMOP_PC_SOLVE);
   bool mat_solution = (param->solution_type == QUDA_MAT_SOLUTION) || (param->solution_type ==  QUDA_MATPC_SOLUTION);
   bool direct_solve = (param->solve_type == QUDA_DIRECT_SOLVE) || (param->solve_type == QUDA_DIRECT_PC_SOLVE);
+  bool chiral_solve = (param->solve_type == QUDA_NORMOP_CHIRAL_SOLVE);
 
   if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
       param->dslash_type == QUDA_STAGGERED_DSLASH) {
@@ -3969,13 +4006,106 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
       param->dslash_type == QUDA_STAGGERED_DSLASH) {
     m = new DiracM(dirac);
     mSloppy = new DiracM(diracSloppy);
+  } else if (chiral_solve) {
+    m = new DiracMdagMChiral(dirac);
+    mSloppy = new DiracMdagMChiral(diracSloppy);
   } else {
     m = new DiracMdagM(dirac);
     mSloppy = new DiracMdagM(diracSloppy);
   }
 
+  std::vector<ColorSpinorField> b_left, b_right;
+  if (chiral_solve) {
+    cudaParam.create = QUDA_NULL_FIELD_CREATE;
+    cudaParam.nSpin = 2;
+    cudaParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+    splitChiral(b_left, b_right, b, nb);
+    blas::zero(x);
+  }
+  std::vector<ColorSpinorField> x_left(b_left.size() * param->num_offset, cudaParam);
+  std::vector<ColorSpinorField> x_right(b_right.size() * param->num_offset, cudaParam);
+  auto tmp = getFieldTmp(b);
+
+  if (chiral_solve) {
+    printfQuda("===============Pre-setttings for the chiral overlap operator===============\n");
+    // 加载 overlap 低模部分特征系统
+    Complex *evals_ov;
+    Complex **evecs_ov;
+    int n_low = 0;
+
+    if (param->ov_n_ev > 0 && param->ov_eigvals != NULL && param->ov_eigvecs != NULL) {
+      n_low = param->ov_n_ev;
+      evals_ov = reinterpret_cast<Complex *>(param->ov_eigvals);
+      evecs_ov = reinterpret_cast<Complex **>(param->ov_eigvecs);
+    } else {
+      errorQuda("No overlap eigensystem loaded.\n");
+    }
+
+    ColorSpinorParam gpuParam(b);
+    gpuParam.create = QUDA_COPY_FIELD_CREATE;
+
+    std::vector<ColorSpinorField> gpu_evecs(n_low);
+    {
+      ColorSpinorParam tmpParam(nullptr, *param, gpuParam.x, false, QUDA_CPU_FIELD_LOCATION);
+      tmpParam.setPrecision(gpuParam.Precision());
+      tmpParam.create = QUDA_REFERENCE_FIELD_CREATE;
+
+      for (int i = 0; i < n_low; i++) {
+        tmpParam.v = evecs_ov[i];
+
+        ColorSpinorField cpu_ref(tmpParam);
+        gpuParam.field = &cpu_ref;
+        gpuParam.create = QUDA_COPY_FIELD_CREATE;
+        gpu_evecs[i] = ColorSpinorField(gpuParam);
+      }
+    }
+
+    ColorSpinorParam chiralParam(b);
+    chiralParam.nSpin = 2;
+    chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+
+    // high-mode propagator
+    for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
+      auto &b_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? b_left : b_right;
+      if (b_chiral.size() > 0) {
+        printfQuda("===============Compute Chiral %d===============\n", chirality);
+
+        printfQuda("===============Compute low-mode propagator===============\n");
+        for (int i = 0; i < n_low; i++) {
+          auto tmp_chiral = getFieldTmp<ColorSpinorField>(chiralParam);
+          spinorChiralProject(tmp_chiral, gpu_evecs[i], chirality);
+          // 计算内积因子
+          Complex alpha = blas::cDotProduct(tmp_chiral, b_chiral[0]);
+          Complex lambda = evals_ov[i];
+          if (sqrt(std::fabs(lambda.real())) <= 100 * std::fabs(lambda.imag())) {
+            alpha *= -2.0;
+          } else {
+            alpha *= -1.0;
+          }
+          blas::caxpy(alpha, tmp_chiral, b_chiral[0]);
+          for (int j = 0; j < param->num_offset; j++) {
+            const double inv_m = 1.0 / (param->offset[j] + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
+            spinorChiralEmbed(tmp, tmp_chiral, chirality);
+            blas::caxpy(-inv_m * alpha, tmp, x[j]);
+          }
+        }
+      }
+    }
+  }
+
   SolverParam solverParam(*param);
-  {
+  if (chiral_solve) {
+    for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
+      auto &b_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? b_left : b_right;
+      auto &x_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? x_left : x_right;
+      ((DiracMdagMChiral *)m)->setChirality(chirality);
+      ((DiracMdagMChiral *)mSloppy)->setChirality(chirality);
+      if (b_chiral.size() > 0) {
+        MultiShiftCG cg_m(*m, *mSloppy, solverParam);
+        cg_m(x_chiral, b_chiral[0], p, r2_old);
+      }
+    }
+  } else {
     MultiShiftCG cg_m(*m, *mSloppy, solverParam);
     cg_m(x, b, p, r2_old);
   }
@@ -4027,19 +4157,27 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
           diracSloppy.setMass(sqrt(param->offset[i]/4));
         }
 
+        if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
+          dirac.setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
+          diracSloppy.setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
+        }
+
         DiracMatrix *m, *mSloppy;
 
         if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
             param->dslash_type == QUDA_STAGGERED_DSLASH) {
           m = new DiracM(dirac);
           mSloppy = new DiracM(diracSloppy);
+        } else if (chiral_solve) {
+          m = new DiracMdagMChiral(dirac);
+          mSloppy = new DiracMdagMChiral(diracSloppy);
         } else {
           m = new DiracMdagM(dirac);
           mSloppy = new DiracMdagM(diracSloppy);
         }
 
         // need to curry in the shift if we are not doing staggered
-        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
+        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH && param->dslash_type != QUDA_OVERLAP_DSLASH) {
           m->shift = param->offset[i];
           mSloppy->shift = param->offset[i];
         }
@@ -4077,7 +4215,21 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
         solverParam.tol_hq = param->tol_hq_offset[i];                                     // set heavy quark tolerance
         solverParam.delta = param->reliable_delta_refinement;
 
-        {
+        if (chiral_solve) {
+          for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
+            auto &b_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? b_left : b_right;
+            auto &x_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? x_left : x_right;
+            ((DiracMdagMChiral *)m)->setChirality(chirality);
+            ((DiracMdagMChiral *)mSloppy)->setChirality(chirality);
+            if (b_chiral.size() > 0) {
+              CG cg(*m, *mSloppy, *mSloppy, *mSloppy, solverParam);
+              if (i == 0)
+                cg(x_chiral, b_chiral[0], p, r2_old);
+              else
+                cg(x_chiral, b_chiral[0]);
+            }
+          }
+        } else {
           CG cg(*m, *mSloppy, *mSloppy, *mSloppy, solverParam);
           if (i == 0)
             cg(x[i], b, p[i], r2_old[i]);
@@ -4095,9 +4247,25 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
           diracSloppy.setMass(sqrt(param->offset[0]/4)); // restore just in case
         }
 
+        if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
+          dirac.setMass(sqrt(param->offset[0] / (param->offset[0] + 1.0)));
+          diracSloppy.setMass(sqrt(param->offset[0] / (param->offset[0] + 1.0)));
+        }
+
         delete m;
         delete mSloppy;
       }
+    }
+  }
+
+  if (chiral_solve) { mergeChiral(x_left, x_right, x); }
+
+  if (chiral_solve) {
+    for (int i = 0; i < param->num_offset; i++) {
+      d->setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
+      blas::copy(tmp, x[i]);
+      d->Mdag(x[i], tmp);
+      d->reconstruct(x[i], b, QUDA_MAT_SOLUTION);
     }
   }
 
@@ -4112,313 +4280,6 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
   }
 
   for(int i=0; i < param->num_offset; i++) {
-    if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { // rescale the solution
-      blas::ax(sqrt(nb), x[i]);
-    }
-
-    logQuda(QUDA_VERBOSE, "Solution %d = %g\n", i, blas::norm2(x[i]));
-    if (!param->make_resident_solution) h_x[i] = x[i];
-  }
-
-  profileMulti.TPSTART(QUDA_PROFILE_EPILOGUE);
-
-  if (!param->make_resident_solution) solutionResident.clear();
-
-  profileMulti.TPSTOP(QUDA_PROFILE_EPILOGUE);
-
-  delete d;
-  delete dSloppy;
-  delete dPre;
-  delete dRefine;
-
-  profilerStop(__func__);
-  popVerbosity();
-}
-
-void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
-{
-  auto profile = pushProfile(profileMulti, param);
-  profilerStart(__func__);
-
-  if (!initialized) errorQuda("QUDA not initialized");
-
-  checkInvertParam(param, hp_x[0], hp_b);
-
-  // check the gauge fields have been created
-  checkGauge(param);
-
-  if (param->num_offset > QUDA_MAX_MULTI_SHIFT)
-    errorQuda("Number of shifts %d requested greater than QUDA_MAX_MULTI_SHIFT %d", param->num_offset,
-              QUDA_MAX_MULTI_SHIFT);
-
-  pushVerbosity(param->verbosity);
-
-  bool pc_solution
-    = (param->solution_type == QUDA_MATPC_SOLUTION) || (param->solution_type == QUDA_MATPCDAG_MATPC_SOLUTION);
-  bool pc_solve = (param->solve_type == QUDA_DIRECT_PC_SOLVE) || (param->solve_type == QUDA_NORMOP_PC_SOLVE);
-  bool mat_solution = (param->solution_type == QUDA_MAT_SOLUTION) || (param->solution_type == QUDA_MATPC_SOLUTION);
-  bool direct_solve = (param->solve_type == QUDA_DIRECT_SOLVE) || (param->solve_type == QUDA_DIRECT_PC_SOLVE);
-
-  param->iter = 0;
-
-  for (int i = 0; i < param->num_offset - 1; i++) {
-    for (int j = i + 1; j < param->num_offset; j++) {
-      if (param->offset[i] > param->offset[j]) errorQuda("Offsets must be ordered from smallest to largest");
-    }
-  }
-
-  if (param->distance_pc_alpha0 != 0.0 && param->distance_pc_t0 >= 0) {
-    errorQuda("Multi-shift solver does not support distance preconditioning");
-  }
-
-  Dirac *d = nullptr;
-  Dirac *dSloppy = nullptr;
-  Dirac *dPre = nullptr;
-  Dirac *dRefine = nullptr;
-
-  // Create the dirac operator and a sloppy, precon, and refine.
-  createDiracWithRefine(d, dSloppy, dPre, dRefine, *param, pc_solve);
-  Dirac &dirac = *d;
-  Dirac &diracSloppy = *dSloppy;
-  dirac.prefetch(QUDA_CUDA_FIELD_LOCATION);
-  diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
-
-  std::vector<double> r2_old(param->num_offset);
-
-  // Grab the dimension array of the input gauge field.
-  const auto X = (param->dslash_type == QUDA_ASQTAD_DSLASH) ? gaugeFatPrecise->X() : gaugePrecise->X();
-
-  // This creates a ColorSpinorParam struct, from the host data
-  // pointer, the definitions in param, the dimensions X, and whether
-  // the solution is on a checkerboard instruction or not. These can
-  // then be used as 'instructions' to create the actual
-  // ColorSpinorField
-  ColorSpinorParam cpuParam(hp_b, *param, X, pc_solution, param->input_location);
-  ColorSpinorField h_b(cpuParam);
-
-  std::vector<ColorSpinorField> h_x;
-  h_x.resize(param->num_offset);
-
-  cpuParam.location = param->output_location;
-  for (int i = 0; i < param->num_offset; i++) {
-    cpuParam.v = hp_x[i];
-    h_x[i] = ColorSpinorField(cpuParam);
-  }
-
-  // Now I need a colorSpinorParam for the device
-  ColorSpinorParam cudaParam(cpuParam, *param, QUDA_CUDA_FIELD_LOCATION);
-  // This setting will download a host vector
-  cudaParam.create = QUDA_COPY_FIELD_CREATE;
-  cudaParam.field = &h_b;
-  ColorSpinorField b(cudaParam); // Creates b and downloads h_b to it
-
-  // Create the solution fields filled with zero
-  cudaParam.create = QUDA_ZERO_FIELD_CREATE;
-
-  // now check if we need to invalidate the solution vectors
-  for (auto &v : solutionResident) {
-    if (cudaParam.Precision() != v.Precision()) {
-      solutionResident.clear();
-      break;
-    }
-  }
-
-  // grow/shrink resident solutions to be correct size
-  auto old_size = solutionResident.size();
-  solutionResident.resize(param->num_offset);
-  for (auto i = old_size; i < solutionResident.size(); i++) solutionResident[i] = ColorSpinorField(cudaParam);
-
-  std::vector<ColorSpinorField> &x = solutionResident;
-  std::vector<ColorSpinorField> p;
-
-  profileMulti.TPSTART(QUDA_PROFILE_PREAMBLE);
-
-  // Check source norms
-  double nb = blas::norm2(b);
-  if (nb == 0.0) errorQuda("Source has zero norm");
-  logQuda(QUDA_VERBOSE, "Source: %g\n", nb);
-
-  // rescale the source vector to help prevent the onset of underflow
-  if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { blas::ax(1.0 / sqrt(nb), b); }
-
-  // backup shifts
-  double unscaled_shifts[QUDA_MAX_MULTI_SHIFT];
-  for (int i = 0; i < param->num_offset; i++) { unscaled_shifts[i] = param->offset[i]; }
-
-  // rescale
-  massRescale(b, *param, true);
-  profileMulti.TPSTOP(QUDA_PROFILE_PREAMBLE);
-
-  printfQuda("===============Pre-setttings for the chiral overlap operator===============\n");
-  GaugeField *cudaGauge = checkGauge(param);
-
-  // 加载 overlap 低模部分特征系统
-  Complex *evals_ov;
-  Complex **evecs_ov;
-  int n_low = 0;
-
-  if (param->ov_n_ev > 0 && param->ov_eigvals != NULL && param->ov_eigvecs != NULL) {
-    n_low = param->ov_n_ev;
-    evals_ov = reinterpret_cast<Complex *>(param->ov_eigvals);
-    evecs_ov = reinterpret_cast<Complex **>(param->ov_eigvecs);
-  } else {
-    printfQuda("No overlap eigensystem loaded.\n");
-    // errorQuda("No overlap eigensystem loaded");
-  }
-
-  ColorSpinorParam gpuParam(b);
-  gpuParam.create = QUDA_COPY_FIELD_CREATE;
-
-  std::vector<ColorSpinorField> gpu_evecs(n_low);
-  {
-    ColorSpinorParam tmpParam(nullptr, *param, gpuParam.x, false, QUDA_CPU_FIELD_LOCATION);
-    tmpParam.setPrecision(gpuParam.Precision());
-    tmpParam.create = QUDA_REFERENCE_FIELD_CREATE;
-
-    for (int i = 0; i < n_low; i++) {
-      tmpParam.v = evecs_ov[i];
-
-      ColorSpinorField cpu_ref(tmpParam);
-      gpuParam.field = &cpu_ref;
-      gpuParam.create = QUDA_COPY_FIELD_CREATE;
-      gpu_evecs[i] = ColorSpinorField(gpuParam);
-    }
-  }
-
-  dirac.setMass(sqrt(param->offset[0] / (param->offset[0] + 1)));
-  diracSloppy.setMass(sqrt(param->offset[0] / (param->offset[0] + 1)));
-  DiracMdagMChiral m(dirac), mSloppy(diracSloppy);
-
-  gpuParam.create = QUDA_NULL_FIELD_CREATE;
-  gpuParam.nSpin = 4;
-  gpuParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
-  ColorSpinorField tmp(gpuParam);
-
-  // 源向量的投影
-  gpuParam.nSpin = 2;
-  gpuParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-  ColorSpinorField in_chiral(gpuParam);
-  ColorSpinorField tmp_chiral(gpuParam);
-  std::vector<ColorSpinorField> out_chiral(param->num_offset, ColorSpinorField(gpuParam));
-
-  for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
-    spinorChiralProject(in_chiral, b, chirality);
-    // 处理每个特征模式
-    if (blas::norm2(in_chiral) / nb > 1e-16) {
-      printfQuda("===============Compute Chirality %d===============\n", chirality);
-
-      printfQuda("===============Compute low-mode propagator===============\n");
-      for (int i = 0; i < n_low; i++) {
-        spinorChiralProject(tmp_chiral, gpu_evecs[i], chirality);
-        // 计算内积因子
-        auto alpha = blas::cDotProduct(tmp_chiral, in_chiral);
-        Complex lambda = evals_ov[i];
-        if (sqrt(std::fabs(lambda.real())) <= 100 * std::fabs(lambda.imag())) {
-          alpha *= -2.0;
-        } else {
-          alpha *= -1.0;
-        }
-        blas::caxpy(alpha, tmp_chiral, in_chiral);
-        for (int j = 0; j < param->num_offset; j++) {
-          const double inv_m = 1.0 / (param->offset[j] + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
-          spinorChiralEmbed(tmp, tmp_chiral, chirality);
-          blas::caxpy(-inv_m * alpha, tmp, x[j]);
-        }
-      }
-
-      printfQuda("===============Compute high-mode propagator===============\n");
-      m.setChirality(chirality);
-      mSloppy.setChirality(chirality);
-      SolverParam solverParam(*param);
-      MultiShiftCG cg_m(m, mSloppy, solverParam);
-      cg_m(out_chiral, in_chiral, p, r2_old);
-      solverParam.updateInvertParam(*param);
-
-      if (param->compute_true_res) {
-        // check each shift has the desired tolerance and use sequential CG to refine
-        cudaParam.create = QUDA_ZERO_FIELD_CREATE;
-        QudaInvertParam refineparam = *param;
-        refineparam.cuda_prec_sloppy = param->cuda_prec_refinement_sloppy;
-        Dirac &dirac = *d;
-        Dirac &diracSloppy = *dRefine;
-        diracSloppy.prefetch(QUDA_CUDA_FIELD_LOCATION);
-
-        for (int i = 0; i < param->num_offset; i++) {
-
-          double rsd_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ? param->true_res_hq_offset[i] : 0;
-          double tol_hq = param->residual_type & QUDA_HEAVY_QUARK_RESIDUAL ? param->tol_hq_offset[i] : 0;
-
-          /*
-          In the case where the shifted systems have zero tolerance
-          specified, we refine these systems until either the limit of
-          precision is reached (prec_tol) or until the tolerance reaches
-          the iterated residual tolerance of the previous multi-shift
-          solver (iter_res_offset[i]), which ever is greater.
-          */
-          const double prec_tol = std::pow(10., (-2 * (int)param->cuda_prec + 4)); // implicit refinment limit of 1e-12
-          const double iter_tol = (param->iter_res_offset[i] < prec_tol ? prec_tol : (param->iter_res_offset[i] * 1.1));
-          const double refine_tol = (param->tol_offset[i] == 0.0 ? iter_tol : param->tol_offset[i]);
-          // refine if either L2 or heavy quark residual tolerances have not been met, only if desired residual is > 0
-          if (param->true_res_offset[i] > refine_tol || rsd_hq > tol_hq) {
-            logQuda(QUDA_SUMMARIZE, "Refining shift %d: L2 residual %e / %e, heavy quark %e / %e (actual / requested)\n",
-                    i, param->true_res_offset[i], param->tol_offset[i], rsd_hq, tol_hq);
-
-            printfQuda("===============Compute high-mode propagator===============\n");
-
-            printfQuda("===============Compute Left : %d===============\n", i);
-
-            // need to curry in the shift if we are not doing staggered
-            if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
-              dirac.setMass(sqrt(param->offset[i] / (param->offset[i] + 1)));
-              diracSloppy.setMass(sqrt(param->offset[i] / (param->offset[i] + 1)));
-            }
-            SolverParam solverParam(refineparam);
-            solverParam.iter = 0;
-            solverParam.use_init_guess = QUDA_USE_INIT_GUESS_YES;
-            solverParam.tol = (param->tol_offset[i] > 0.0 ? param->tol_offset[i] : iter_tol); // set L2 tolerance
-            solverParam.tol_hq = param->tol_hq_offset[i]; // set heavy quark tolerance
-            solverParam.delta = param->reliable_delta_refinement;
-
-            m.setChirality(chirality);
-            mSloppy.setChirality(chirality);
-            CG cg(m, mSloppy, mSloppy, mSloppy, solverParam);
-            if (i == 0)
-              cg(out_chiral[i], in_chiral, p[i], r2_old[i]);
-            else
-              cg(out_chiral[i], in_chiral);
-
-            solverParam.true_res_offset[i] = solverParam.true_res[i];
-            solverParam.true_res_hq_offset[i] = solverParam.true_res_hq[i];
-            solverParam.updateInvertParam(*param, i);
-          }
-        }
-      }
-
-      for (int i = 0; i < param->num_offset; i++) {
-        spinorChiralEmbed(tmp, out_chiral[i], chirality);
-        blas::xpy(tmp, x[i]);
-      }
-    }
-  }
-
-  for (int i = 0; i < param->num_offset; i++) {
-    d->setMass(sqrt(param->offset[i] / (param->offset[i] + 1)));
-    blas::copy(tmp, x[i]);
-    d->Mdag(x[i], tmp);
-    d->reconstruct(x[i], b, param->solution_type);
-  }
-
-  // restore shifts
-  for (int i = 0; i < param->num_offset; i++) param->offset[i] = unscaled_shifts[i];
-
-  if (param->compute_action) {
-    Complex action(0);
-    for (int i = 0; i < param->num_offset; i++) action += param->residue[i] * blas::cDotProduct(b, x[i]);
-    param->action[0] = action.real();
-    param->action[1] = action.imag();
-  }
-
-  for (int i = 0; i < param->num_offset; i++) {
     if (param->solver_normalization == QUDA_SOURCE_NORMALIZATION) { // rescale the solution
       blas::ax(sqrt(nb), x[i]);
     }
