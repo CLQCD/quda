@@ -276,8 +276,7 @@ namespace quda
     double b = eig_param->a_max;
     double delta = (b - a) / 2.0;
     double theta = (b + a) / 2.0;
-    double lambda1 = b; // lambda1 = 0 before
-    double sigma1 = delta / (lambda1 - theta);
+    double sigma1 = -delta / theta;
     double sigma;
     double d1 = sigma1 / delta;
     double d2 = 1.0;
