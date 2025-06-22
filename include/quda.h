@@ -312,7 +312,7 @@ extern "C" {
     void *deflation_op;
 
     /** defines deflation */
-    QudaEigParam *eig_param;
+    void *eig_param;
 
     /** If true, deflate the initial guess */
     QudaBoolean deflate;
