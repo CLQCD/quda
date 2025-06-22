@@ -3797,12 +3797,15 @@ void dslashMultiSrcQuda(void **_hp_x, void **_hp_b, QudaInvertParam *param, Quda
 
 namespace quda
 {
-  void splitChiral(std::vector<ColorSpinorField> &b_left, std::vector<ColorSpinorField> &b_right,
+  void separateChiral(std::vector<ColorSpinorField> &b_left, std::vector<ColorSpinorField> &b_right,
                    const ColorSpinorField &b, double nb)
   {
     ColorSpinorParam chiralParam(b);
     chiralParam.nSpin = 2;
     chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+    chiralParam.setPrecision(chiralParam.Precision(), chiralParam.Precision(), true);
+    b_left.resize(0);
+    b_right.resize(0);
     {
       ColorSpinorField tmp_left(chiralParam);
       spinorChiralProject(tmp_left, b, QUDA_CHIRALITY_LEFT);
@@ -3815,7 +3818,7 @@ namespace quda
     }
   }
 
-  void mergeChiral(cvector_ref<ColorSpinorField> &x_left, cvector_ref<ColorSpinorField> &x_right,
+  void combineChiral(cvector_ref<ColorSpinorField> &x_left, cvector_ref<ColorSpinorField> &x_right,
                    cvector_ref<ColorSpinorField> &x)
   {
     auto tmp = getFieldTmp(x[0]);
@@ -4015,12 +4018,12 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
     cudaParam.create = QUDA_NULL_FIELD_CREATE;
     cudaParam.nSpin = 2;
     cudaParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-    splitChiral(b_left, b_right, b, nb);
+    cudaParam.setPrecision(cudaParam.Precision(), cudaParam.Precision(), true);
+    separateChiral(b_left, b_right, b, nb);
     blas::zero(x);
   }
   std::vector<ColorSpinorField> x_left(b_left.size() * param->num_offset, cudaParam);
   std::vector<ColorSpinorField> x_right(b_right.size() * param->num_offset, cudaParam);
-  auto tmp = getFieldTmp(b);
 
   if (chiral_solve) {
     printfQuda("===============Pre-setttings for the chiral overlap operator===============\n");
@@ -4043,7 +4046,6 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
     std::vector<ColorSpinorField> gpu_evecs(n_low);
     {
       ColorSpinorParam tmpParam(nullptr, *param, gpuParam.x, false, QUDA_CPU_FIELD_LOCATION);
-      tmpParam.setPrecision(gpuParam.Precision());
       tmpParam.create = QUDA_REFERENCE_FIELD_CREATE;
 
       for (int i = 0; i < n_low; i++) {
@@ -4056,19 +4058,16 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
       }
     }
 
-    ColorSpinorParam chiralParam(b);
-    chiralParam.nSpin = 2;
-    chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
-
     // high-mode propagator
     for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
       auto &b_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? b_left : b_right;
       if (b_chiral.size() > 0) {
+        auto tmp = getFieldTmp(x[0]);
         printfQuda("===============Compute Chiral %d===============\n", chirality);
 
         printfQuda("===============Compute low-mode propagator===============\n");
         for (int i = 0; i < n_low; i++) {
-          auto tmp_chiral = getFieldTmp<ColorSpinorField>(chiralParam);
+          auto tmp_chiral = getFieldTmp<ColorSpinorField>(cudaParam);
           spinorChiralProject(tmp_chiral, gpu_evecs[i], chirality);
           // 计算内积因子
           Complex alpha = blas::cDotProduct(tmp_chiral, b_chiral[0]);
@@ -4221,9 +4220,9 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
             if (b_chiral.size() > 0) {
               CG cg(*m, *mSloppy, *mSloppy, *mSloppy, solverParam);
               if (i == 0)
-                cg(x_chiral, b_chiral[0], p, r2_old);
+                cg(x_chiral[i], b_chiral[0], p[i], r2_old[i]);
               else
-                cg(x_chiral, b_chiral[0]);
+                cg(x_chiral[i], b_chiral[0]);
             }
           }
         } else {
@@ -4255,9 +4254,10 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
     }
   }
 
-  if (chiral_solve) { mergeChiral(x_left, x_right, x); }
+  if (chiral_solve) { combineChiral(x_left, x_right, x); }
 
   if (chiral_solve) {
+    auto tmp = getFieldTmp(x[0]);
     for (int i = 0; i < param->num_offset; i++) {
       d->setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
       blas::copy(tmp, x[i]);

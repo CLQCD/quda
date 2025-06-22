@@ -133,6 +133,7 @@ namespace quda
     ColorSpinorParam param(in[0]);
     param.nSpin = 4;
     param.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+    param.setPrecision(param.Precision(), param.Precision(), true);
     auto in_tmp = getFieldTmp<ColorSpinorField>(in.size(), param);
     auto out_tmp = getFieldTmp<ColorSpinorField>(out.size(), param);
 
@@ -159,15 +160,13 @@ namespace quda
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) { return; }
 
     if (solType == QUDA_MAT_SOLUTION) {
-      // 1 / sqrt(1 - m^2)
-      blas::ax(1.0 / sqrt(1.0 - mass * mass), x);
-      // 1 - D
-      blas::axpby(-1.0 / (1.0 - mass), b, 1.0 / (1.0 - mass), x);
+      // x = -1 / (1 - m) * b + 1 / (1 - m) * 1 / sqrt(1 - m^2) * x'
+      // x' = M^{-1} * b = (sqrt((1 - m) / (1 + m)) * (m / (1 - m) + D))^{-1} * b
+      blas::axpby(-1.0 / (1.0 - mass), b, 1.0 / (1.0 - mass) / sqrt(1.0 - mass * mass), x);
     } else if (solType == QUDA_MATDAG_MAT_SOLUTION) {
-      // 1 / (1 - m^2)
-      blas::ax(1.0 / (1.0 - mass * mass), x);
-      // 1 - D^\dagger D
-      blas::axpby(-1.0 / (1.0 - mass * mass), b, 1.0 / (1.0 - mass * mass), x);
+      // x = -1 / (1 - m^2) * b + 1 / (1 - m^2) * 1 / (1 - m^2) * x'
+      // x' = (MdagM)^{-1} * b = (m^2 / (1 - m^2) + DdagD)^{-1} * b
+      blas::axpby(-1.0 / (1.0 - mass * mass), b, 1.0 / (1.0 - mass * mass) / (1.0 - mass * mass), x);
     }
   }
 

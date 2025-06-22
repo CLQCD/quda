@@ -266,7 +266,7 @@ namespace quda {
     // now create the worker class for updating the shifted solutions and gradient vectors
     bool aux_update = false;
     ShiftUpdate shift_update(r_sloppy, p, x_sloppy, alpha, beta, zeta, zeta_old, j_low, num_offset_now,
-                             mat.getStencilSteps());
+                             matSloppy.getStencilSteps());
 
     getProfile().TPSTOP(QUDA_PROFILE_PREAMBLE);
     getProfile().TPSTART(QUDA_PROFILE_COMPUTE);

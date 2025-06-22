@@ -79,6 +79,18 @@ namespace quda
   template <> struct VectorType<int8_t, 24> {
     using type = array<int8_t, 24>;
   };
+  template <> struct VectorType<double, 12> {
+    using type = array<double, 12>;
+  };
+  template <> struct VectorType<float, 12> {
+    using type = array<float, 12>;
+  };
+  template <> struct VectorType<short, 12> {
+    using type = array<short, 12>;
+  };
+  template <> struct VectorType<int8_t, 12> {
+    using type = array<int8_t, 12>;
+  };
   template <> struct VectorType<double, 6> {
     using type = array<double, 6>;
   };
@@ -343,37 +355,49 @@ namespace quda
 
     // native ordering
     template <> constexpr int n_vector<double, true, 4, false>() { return 2; }
+    template <> constexpr int n_vector<double, true, 2, false>() { return 2; }
     template <> constexpr int n_vector<double, true, 1, false>() { return 2; }
 
     template <> constexpr int n_vector<double, true, 4, true>() { return 2; }
+    template <> constexpr int n_vector<double, true, 2, true>() { return 2; }
     template <> constexpr int n_vector<double, true, 1, true>() { return 2; }
 
     template <> constexpr int n_vector<float, true, 4, false>() { return 4; }
-    template <> constexpr int n_vector<float, true, 1, false>() { return 4; }
+    template <> constexpr int n_vector<float, true, 2, false>() { return 4; }
+    template <> constexpr int n_vector<float, true, 1, false>() { return 4; } // TODO: correct?
 
     template <> constexpr int n_vector<float, true, 4, true>() { return 4; }
+    template <> constexpr int n_vector<float, true, 2, true>() { return QUDA_ORDER_SP_MG; }
     template <> constexpr int n_vector<float, true, 1, true>() { return 2; }
 
     template <> constexpr int n_vector<short, true, 4, true>() { return QUDA_ORDER_FP; }
+    template <> constexpr int n_vector<short, true, 2, true>() { return QUDA_ORDER_FP_MG; }
     template <> constexpr int n_vector<short, true, 1, true>() { return 2; }
 
     template <> constexpr int n_vector<int8_t, true, 4, true>() { return QUDA_ORDER_FP; }
+    template <> constexpr int n_vector<int8_t, true, 2, true>() { return QUDA_ORDER_FP_MG; }
     template <> constexpr int n_vector<int8_t, true, 1, true>() { return 2; }
 
     // Just use float-2/float-4 ordering on CPU when not site unrolling
     template <> constexpr int n_vector<double, false, 4, false>() { return 2; }
+    template <> constexpr int n_vector<double, false, 2, false>() { return 2; }
     template <> constexpr int n_vector<double, false, 1, false>() { return 2; }
     template <> constexpr int n_vector<float, false, 4, false>() { return 4; }
+    template <> constexpr int n_vector<float, false, 2, false>() { return 4; }
     template <> constexpr int n_vector<float, false, 1, false>() { return 4; }
 
     // AoS ordering is used on CPU uses when we are site unrolling
     template <> constexpr int n_vector<double, false, 4, true>() { return 24; }
+    template <> constexpr int n_vector<double, false, 2, true>() { return 12; }
     template <> constexpr int n_vector<double, false, 1, true>() { return 6; }
     template <> constexpr int n_vector<float, false, 4, true>() { return 24; }
+    template <> constexpr int n_vector<float, false, 2, true>() { return 12; }
     template <> constexpr int n_vector<float, false, 1, true>() { return 6; }
     template <> constexpr int n_vector<short, false, 4, true>() { return 24; }
+    template <> constexpr int n_vector<short, false, 2, true>() { return 12; }
     template <> constexpr int n_vector<short, false, 1, true>() { return 6; }
     template <> constexpr int n_vector<int8_t, false, 4, true>() { return 24; }
+    template <> constexpr int n_vector<int8_t, false, 2, true>() { return 12; }
     template <> constexpr int n_vector<int8_t, false, 1, true>() { return 6; }
 
     template <template <typename...> class Functor,
@@ -382,10 +406,15 @@ namespace quda
     constexpr void instantiate(const T &a, const T &b, const T &c, V &x_, Args &&... args)
     {
       unwrap_t<V> &x(x_);
-      if (x.Nspin() == 4 || x.Nspin() == 2) {
-        if constexpr (is_enabled_spin(2) || is_enabled_spin(4)) {
-          // Nspin-2 takes Nspin-4 path here, and we check for this later
+      if (x.Nspin() == 4) {
+        if constexpr (is_enabled_spin(4)) {
           Blas<Functor, store_t, y_store_t, 4, T>(a, b, c, x, args...);
+        } else {
+          errorQuda("blas has not been built for Nspin=%d fields", x.Nspin());
+        }
+      } else if (x.Nspin() == 2) {
+        if constexpr (is_enabled_spin(2)) {
+          Blas<Functor, store_t, y_store_t, 2, T>(a, b, c, x, args...);
         } else {
           errorQuda("blas has not been built for Nspin=%d fields", x.Nspin());
         }

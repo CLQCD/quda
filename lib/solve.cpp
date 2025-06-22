@@ -139,29 +139,21 @@ namespace quda
     }
   }
 
-  void setChirality(DiracMdagMChiral &mat, DiracMdagMChiral &matSloppy, DiracMdagMChiral &matPre,
-                    DiracMdagMChiral &matEig, QudaChirality chirality)
-  {
-    mat.setChirality(chirality);
-    matSloppy.setChirality(chirality);
-    matPre.setChirality(chirality);
-    matEig.setChirality(chirality);
-  }
-
-  void splitChiral(std::vector<size_t> &idx_left, std::vector<ColorSpinorField> &in_left,
+  void separateChiral(std::vector<size_t> &idx_left, std::vector<ColorSpinorField> &in_left,
                    std::vector<size_t> &idx_right, std::vector<ColorSpinorField> &in_right,
                    cvector_ref<const ColorSpinorField> &in, std::vector<double> &nb)
   {
     ColorSpinorParam chiralParam(in[0]);
     chiralParam.nSpin = 2;
     chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+    chiralParam.setPrecision(chiralParam.Precision(), chiralParam.Precision(), true);
     in_left.resize(0);
     in_right.resize(0);
     for (size_t i = 0; i < in.size(); i++) {
       {
         ColorSpinorField tmp_left(chiralParam);
         spinorChiralProject(tmp_left, in[i], QUDA_CHIRALITY_LEFT);
-        if (blas::norm2(tmp_left) / nb[i] > 1e-16) {
+        if (blas::norm2(tmp_left) / nb[i] > 1e-6) {
           idx_left.push_back(i);
           in_left.push_back(std::move(tmp_left));
         }
@@ -169,7 +161,7 @@ namespace quda
       {
         ColorSpinorField tmp_right(chiralParam);
         spinorChiralProject(tmp_right, in[i], QUDA_CHIRALITY_RIGHT);
-        if (blas::norm2(tmp_right) / nb[i] > 1e-16) {
+        if (blas::norm2(tmp_right) / nb[i] > 1e-6) {
           idx_right.push_back(i);
           in_right.push_back(std::move(tmp_right));
         }
@@ -177,7 +169,7 @@ namespace quda
     }
   }
 
-  void mergeChiral(std::vector<size_t> &idx_left, cvector_ref<ColorSpinorField> &out_left, std::vector<size_t> &idx_right,
+  void combineChiral(std::vector<size_t> &idx_left, cvector_ref<ColorSpinorField> &out_left, std::vector<size_t> &idx_right,
                    cvector_ref<ColorSpinorField> &out_right, cvector_ref<ColorSpinorField> &out)
   {
     auto tmp = getFieldTmp(out[0]);
@@ -282,12 +274,11 @@ namespace quda
 
     if (chiral_solve && !direct_solve) {
       DiracMdagMChiral m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
-      auto tmp = getFieldTmp(in[0]);
       SolverParam solverParam(param);
 
       std::vector<size_t> idx_left, idx_right;
       std::vector<ColorSpinorField> in_left, in_right;
-      splitChiral(idx_left, in_left, idx_right, in_right, in, nb);
+      separateChiral(idx_left, in_left, idx_right, in_right, in, nb);
       auto out_left = getFieldTmp<ColorSpinorField>(in_left);
       auto out_right = getFieldTmp<ColorSpinorField>(in_right);
 
@@ -311,7 +302,6 @@ namespace quda
       std::vector<ColorSpinorField> gpu_evecs(n_low);
       {
         ColorSpinorParam tmpParam(nullptr, param, gpuParam.x, false, QUDA_CPU_FIELD_LOCATION);
-        tmpParam.setPrecision(gpuParam.Precision());
         tmpParam.create = QUDA_REFERENCE_FIELD_CREATE;
 
         for (int i = 0; i < n_low; i++) {
@@ -327,10 +317,12 @@ namespace quda
       ColorSpinorParam chiralParam(in[0]);
       chiralParam.nSpin = 2;
       chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
+      chiralParam.setPrecision(chiralParam.Precision(), chiralParam.Precision(), true);
 
       for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
         auto &in_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? in_left : in_right;
         if (in_chiral.size() > 0) {
+          auto tmp = getFieldTmp(out[0]);
           printfQuda("===============Compute Chiral %d===============\n", chirality);
 
           printfQuda("===============Compute low-mode propagator===============\n");
@@ -360,7 +352,10 @@ namespace quda
       for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
         auto &in_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? in_left : in_right;
         auto &out_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? out_left : out_right;
-        setChirality(m, mSloppy, mPre, mEig, chirality);
+        m.setChirality(chirality);
+        mSloppy.setChirality(chirality);
+        mPre.setChirality(chirality);
+        mEig.setChirality(chirality);
         if (in_chiral.size() > 0) {
           Solver *solve = Solver::create(solverParam, m, mSloppy, mPre, mEig);
           (*solve)(out_chiral, in_chiral);
@@ -368,8 +363,9 @@ namespace quda
           solverParam.updateInvertParam(param);
         }
       }
-      mergeChiral(idx_left, out_left, idx_right, out_right, out);
+      combineChiral(idx_left, out_left, idx_right, out_right, out);
       if (mat_solution) {
+        auto tmp = getFieldTmp<ColorSpinorField>(out);
         blas::copy(tmp, out);
         dirac.Mdag(out, tmp);
       }

@@ -12,15 +12,16 @@
 namespace quda
 {
   struct OverlapKernel {
-    vector<ColorSpinorField> evecs;
-    vector<double> evals;
+    std::vector<ColorSpinorField> evecs;
+    std::vector<double> evals;
     double kappa;
     double epsilon;
-    vector<double> remez_tol;
-    vector<vector<double>> remez_coeff;
-    vector<int> remez_order;
+    std::vector<double> remez_tol;
+    std::vector<std::vector<double>> remez_coeff;
+    std::vector<int> remez_order;
 
-    OverlapKernel(cvector<ColorSpinorField> &evecs, cvector<Complex> &evals, double kappa, cvector<double> remez_tol);
+    OverlapKernel(const std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals, double kappa,
+                  const std::vector<double> remez_tol);
     OverlapKernel(const OverlapKernel *overlap_kernel, QudaPrecision precision);
     ~OverlapKernel() = default;
 
