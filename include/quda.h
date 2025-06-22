@@ -312,7 +312,7 @@ extern "C" {
     void *deflation_op;
 
     /** defines deflation */
-    void *eig_param;
+    QudaEigParam *eig_param;
 
     /** If true, deflate the initial guess */
     QudaBoolean deflate;
@@ -529,6 +529,9 @@ extern "C" {
     QudaBoolean use_dagger;
     QudaBoolean use_norm_op;
     QudaBoolean use_pc;
+
+    /** Use chiral version of MdagM */
+    QudaChirality chirality;
 
     /** Use Eigen routines to eigensolve the upper Hessenberg via QR **/
     QudaBoolean use_eigen_qr;

@@ -2869,7 +2869,10 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
     inv_param->solution_type = QUDA_MATPC_SOLUTION;
   } else {
     if (eig_param->use_norm_op)
-      inv_param->solve_type = QUDA_NORMOP_SOLVE;
+      if (eig_param->chirality == QUDA_CHIRALITY_INVALID)
+        inv_param->solve_type = QUDA_NORMOP_SOLVE;
+      else
+        inv_param->solve_type = QUDA_NORMOP_CHIRAL_SOLVE;
     else
       inv_param->solve_type = QUDA_DIRECT_SOLVE;
     inv_param->solution_type = QUDA_MAT_SOLUTION;
@@ -2910,6 +2913,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   //------------------------------------------------------
   // Create host wrappers around application vector set
   ColorSpinorParam cpuParam(nullptr, *inv_param, cudaGauge->X(), pc_solve, inv_param->input_location);
+  if (eig_param->chirality != QUDA_CHIRALITY_INVALID) { cpuParam.nSpin = 2; }
 
   int n_eig = eig_param->n_conv;
   if (eig_param->compute_svd) n_eig *= 2;
@@ -2932,7 +2936,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   cudaParam.create = QUDA_ZERO_FIELD_CREATE;
   cudaParam.setPrecision(inv_param->cuda_prec_eigensolver, inv_param->cuda_prec_eigensolver, true);
   // Ensure device vectors qre in UKQCD basis for Wilson type fermions
-  if (cudaParam.nSpin != 1) cudaParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+  if (cudaParam.nSpin == 4) cudaParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
 
   std::vector<ColorSpinorField> kSpace(n_eig);
   for (int i = 0; i < n_eig; i++) {
@@ -2978,7 +2982,12 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   } else if (!eig_param->use_norm_op && eig_param->use_dagger) {
     m = new DiracMdag(dirac);
   } else if (eig_param->use_norm_op && !eig_param->use_dagger) {
-    m = new DiracMdagM(dirac);
+    if (eig_param->chirality == QUDA_CHIRALITY_INVALID) {
+      m = new DiracMdagM(dirac);
+    } else {
+      m = new DiracMdagMChiral(dirac);
+      ((DiracMdagMChiral *)m)->setChirality(eig_param->chirality);
+    }
   } else if (eig_param->use_norm_op && eig_param->use_dagger) {
     m = new DiracMMdag(dirac);
   } else {
@@ -3263,7 +3272,7 @@ deflated_solver::deflated_solver(QudaEigParam &eig_param, TimeProfile &profile)
 
   if (ritzParam.location==QUDA_CUDA_FIELD_LOCATION) {
     ritzParam.setPrecision(param->cuda_prec_ritz, param->cuda_prec_ritz, true); // set native field order
-    if (ritzParam.nSpin != 1) ritzParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+    if (ritzParam.nSpin == 4) ritzParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
 
     //select memory location here, by default ritz vectors will be allocated on the device
     //but if not sufficient device memory, then the user may choose mapped type of memory
