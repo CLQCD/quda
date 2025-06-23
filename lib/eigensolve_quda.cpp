@@ -276,10 +276,11 @@ namespace quda
     double b = eig_param->a_max;
     double delta = (b - a) / 2.0;
     double theta = (b + a) / 2.0;
-    double sigma1 = -delta / theta;
+    double lambda1 = eig_param->spectrum == QUDA_SPECTRUM_SR_EIG ? a : b;
+    double sigma1 = delta / (lambda1 - theta);
     double sigma;
     double d1 = sigma1 / delta;
-    double d2 = 1.0;
+    double d2 = -d1 * theta;
     double d3;
 
     // out = d2 * in + d1 * out
@@ -302,7 +303,7 @@ namespace quda
     double sigma_old = sigma1;
 
     // construct C_{m+1}(x)
-    for (int i = 2; i < eig_param->poly_deg; i++) {
+    for (int i = 1; i < eig_param->poly_deg; i++) {
       sigma = 1.0 / (2.0 / sigma1 - sigma_old);
 
       d1 = 2.0 * sigma / delta;
