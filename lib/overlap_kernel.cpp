@@ -121,8 +121,8 @@ namespace quda
     return {c.begin(), c.begin() + n};
   }
 
-  OverlapKernel::OverlapKernel(const std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals,
-                               double kappa, const std::vector<double> remez_tol) :
+  OverlapKernel::OverlapKernel(std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals, double kappa,
+                               const std::vector<double> remez_tol) :
     evals(evals.size()),
     kappa(kappa),
     epsilon(pow(evals.back().real() / (1.0 + 8.0 * kappa), 2)),

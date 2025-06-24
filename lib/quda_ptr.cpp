@@ -46,6 +46,10 @@ namespace quda
       device = nullptr;
       host = ptr;
       break;
+    case QUDA_MEMORY_MAPPED:
+      host = ptr;
+      device = get_mapped_device_pointer(ptr);
+      break;
     case QUDA_MEMORY_MANAGED:
       device = ptr;
       host = ptr;
@@ -78,6 +82,7 @@ namespace quda
       case QUDA_MEMORY_HOST: host_free(host); break;
       case QUDA_MEMORY_HOST_PINNED: pool ? pool_pinned_free(host) : host_free(host); break;
       case QUDA_MEMORY_MAPPED: host_free(host); break;
+      case QUDA_MEMORY_MANAGED: managed_free(host); break;
       default: errorQuda("Unknown memory type %d", type);
       }
       getProfile().TPSTOP(QUDA_PROFILE_FREE);
@@ -105,6 +110,7 @@ namespace quda
     switch (type) {
     case QUDA_MEMORY_DEVICE:
     case QUDA_MEMORY_DEVICE_PINNED:
+    case QUDA_MEMORY_HOST_PINNED: // Host pinned memory is visible to the device
     case QUDA_MEMORY_MAPPED:
     case QUDA_MEMORY_MANAGED: return true;
     default: return false;
@@ -116,6 +122,7 @@ namespace quda
     switch (type) {
     case QUDA_MEMORY_HOST:
     case QUDA_MEMORY_HOST_PINNED:
+    case QUDA_MEMORY_MAPPED:
     case QUDA_MEMORY_MANAGED: return true;
     default: return false;
     }

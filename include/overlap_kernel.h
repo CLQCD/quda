@@ -20,7 +20,7 @@ namespace quda
     std::vector<std::vector<double>> remez_coeff;
     std::vector<int> remez_order;
 
-    OverlapKernel(const std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals, double kappa,
+    OverlapKernel(std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals, double kappa,
                   const std::vector<double> remez_tol);
     OverlapKernel(const OverlapKernel *overlap_kernel, QudaPrecision precision);
     ~OverlapKernel() = default;

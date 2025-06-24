@@ -11,7 +11,7 @@ namespace quda
    * where M is the Wilson operator
    */
   void ApplyOverlap(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, const GaugeField &U,
-                    const OverlapKernel &O, double a, cvector_ref<const ColorSpinorField> &x, int parity, bool dagger,
+                    OverlapKernel &O, double a, cvector_ref<const ColorSpinorField> &x, int parity, bool dagger,
                     const int *comm_override, TimeProfile &profile)
   {
     auto in_def = getFieldTmp(out);
@@ -20,7 +20,7 @@ namespace quda
     auto Mb1 = getFieldTmp(out);
     auto Ab1 = getFieldTmp(out);
 
-    cvector<ColorSpinorField> &evecs = O.evecs;
+    cvector_ref<ColorSpinorField> &evecs = O.evecs;
     cvector<double> &evals = O.evals;
     const double remez_order = O.remez_order[0];
     cvector<double> &remez_coeff = O.remez_coeff[0];
@@ -44,13 +44,13 @@ namespace quda
      * ==> \gamma_5 \sum_i sign(\lambda_i) |v_i><v_i|
      */
     std::vector<quda::Complex> alpha(evecs.size() * in_def.size());
-    blas::block::cDotProduct(alpha, {evecs.begin(), evecs.end()}, in_def);
+    blas::block::cDotProduct(alpha, evecs, in_def);
     for (auto &v : alpha) { v *= -1; }
-    blas::block::caxpy(alpha, {evecs.begin(), evecs.end()}, in_def);
+    blas::block::caxpy(alpha, evecs, in_def);
     for (size_t i = 0; i < evecs.size(); i++) {
       for (size_t j = 0; j < in_def.size(); ++j) { alpha[i * in_def.size() + j] *= -evals[i] / abs(evals[i]); }
     }
-    blas::block::caxpy(alpha, {evecs.begin(), evecs.end()}, out);
+    blas::block::caxpy(alpha, evecs, out);
     if (!dagger) { gamma5(out, out); }
 
     /**
@@ -139,7 +139,7 @@ namespace quda
 
     for (size_t i = 0; i < in.size(); i++) { spinorChiralEmbed(in_tmp[i], in[i], chirality); }
     DslashXpay(out_tmp, in_tmp, QUDA_INVALID_PARITY, in_tmp, (mass * mass) / (1.0 - mass * mass));
-    for (size_t i = 0; i < in.size(); i++) { spinorChiralProject(out[i], out_tmp[i], chirality); }
+    for (size_t i = 0; i < out.size(); i++) { spinorChiralProject(out[i], out_tmp[i], chirality); }
   }
 
   void DiracOverlap::prepare(cvector_ref<ColorSpinorField> &out, cvector_ref<ColorSpinorField> &in,

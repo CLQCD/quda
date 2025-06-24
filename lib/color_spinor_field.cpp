@@ -296,7 +296,7 @@ namespace quda
     if (init) {
       std::stringstream aux_ss;
       aux_ss << "vol=" << volume << ",parity=" << siteSubset << ",precision=" << precision << ",order=" << fieldOrder
-             << ",Ns=" << nSpin << ",Nc=" << nColor;
+             << ",Ns=" << nSpin << ",Nc=" << nColor << ",memory=" << mem_type;
       if (nVec > 1) aux_ss << ",nVec=" << nVec;
       if (twistFlavor != QUDA_TWIST_NO && twistFlavor != QUDA_TWIST_INVALID) aux_ss << ",TwistFlavor=" << twistFlavor;
       aux_string = aux_ss.str();

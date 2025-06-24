@@ -1188,11 +1188,13 @@ void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param)
 
   QudaEigParam eig_param_g5w = newQudaEigParam();
   eig_param_g5w.eig_type = QUDA_EIG_TR_LANCZOS;
+  eig_param_g5w.spectrum = QUDA_SPECTRUM_SR_EIG;
   eig_param_g5w.use_dagger = QUDA_BOOLEAN_FALSE;
   eig_param_g5w.use_norm_op = QUDA_BOOLEAN_TRUE;
   eig_param_g5w.use_pc = QUDA_BOOLEAN_FALSE;
   eig_param_g5w.compute_gamma5 = QUDA_BOOLEAN_FALSE;
-  eig_param_g5w.spectrum = QUDA_SPECTRUM_SR_EIG;
+  eig_param_g5w.batched_rotate = 1; // Save device memory
+  eig_param_g5w.compute_evals_batch_size = 1;
 
   eig_param_g5w.use_poly_acc = eig_param->use_poly_acc;
   eig_param_g5w.poly_deg = eig_param->poly_deg;
@@ -1233,6 +1235,8 @@ void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param)
   QudaPrecision prec[] = {inv_param->cuda_prec_sloppy, inv_param->cuda_prec_precondition,
                           inv_param->cuda_prec_refinement_sloppy, inv_param->cuda_prec_eigensolver};
   loadSloppyOverlapQuda(prec);
+
+  flushPoolQuda(QUDA_MEMORY_DEVICE);
 
   popVerbosity();
 }
@@ -2935,6 +2939,9 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   ColorSpinorParam cudaParam(cpuParam, *inv_param, QUDA_CUDA_FIELD_LOCATION);
   cudaParam.create = QUDA_ZERO_FIELD_CREATE;
   cudaParam.setPrecision(inv_param->cuda_prec_eigensolver, inv_param->cuda_prec_eigensolver, true);
+  // Overlap fermion will use almost all device memroy to construct the operator
+  // and so we need to ensure that the eigenvectors are stored in pinned memory.
+  if (inv_param->dslash_type == QUDA_OVERLAP_DSLASH) { cudaParam.mem_type = QUDA_MEMORY_HOST_PINNED; }
   // Ensure device vectors qre in UKQCD basis for Wilson type fermions
   if (cudaParam.nSpin == 4) cudaParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
 
@@ -3807,7 +3814,7 @@ void dslashMultiSrcQuda(void **_hp_x, void **_hp_b, QudaInvertParam *param, Quda
 namespace quda
 {
   void separateChiral(std::vector<ColorSpinorField> &b_left, std::vector<ColorSpinorField> &b_right,
-                   const ColorSpinorField &b, double nb)
+                      const ColorSpinorField &b, double nb)
   {
     ColorSpinorParam chiralParam(b);
     chiralParam.nSpin = 2;
@@ -3828,7 +3835,7 @@ namespace quda
   }
 
   void combineChiral(cvector_ref<ColorSpinorField> &x_left, cvector_ref<ColorSpinorField> &x_right,
-                   cvector_ref<ColorSpinorField> &x)
+                     cvector_ref<ColorSpinorField> &x)
   {
     auto tmp = getFieldTmp(x[0]);
     for (size_t i = 0; i < x_left.size(); i++) {

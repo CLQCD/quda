@@ -271,6 +271,12 @@ namespace quda
 
     if (eig_param->poly_deg == 0) errorQuda("Polynomial acceleration requested with zero polynomial degree");
 
+    ColorSpinorParam param(in[0]);
+    param.mem_type = QUDA_MEMORY_DEVICE; // FIXME: Hack for eigensolver in the host memory
+    auto z_old = getFieldTmp<ColorSpinorField>(in.size(), param);
+    auto z = getFieldTmp<ColorSpinorField>(in.size(), param);
+    auto Az = getFieldTmp<ColorSpinorField>(in.size(), param);
+
     // Compute the polynomial accelerated operator.
     double a = eig_param->a_min;
     double b = eig_param->a_max;
@@ -278,6 +284,7 @@ namespace quda
     double theta = (b + a) / 2.0;
     double lambda1 = eig_param->spectrum == QUDA_SPECTRUM_SR_EIG ? a : b;
     double sigma1 = delta / (lambda1 - theta);
+    double sigma_old = sigma1;
     double sigma;
     double d1 = sigma1 / delta;
     double d2 = -d1 * theta;
@@ -285,22 +292,13 @@ namespace quda
 
     // out = d2 * in + d1 * out
     // C_1(x) = x
-    mat({out.begin(), out.end()}, {in.begin(), in.end()});
-    blas::caxpby(d2, in, d1, out);
-
-    if (eig_param->poly_deg == 1) return;
-
-    // C_0 is the current 'in'  vector.
-    // C_1 is the current 'out' vector.
-
-    // Clone 'in' to two temporary vectors.
-    std::vector<ColorSpinorField> tmp1{in.begin(), in.end()};
-    std::vector<ColorSpinorField> tmp2{out.begin(), out.end()};
+    blas::copy(z, in);
+    mat(Az, z);
+    blas::axpbyz(d2, z, d1, Az, z_old);
+    std::swap(z, z_old);
 
     // Using Chebyshev polynomial recursion relation,
     // C_{m+1}(x) = 2*x*C_{m} - C_{m-1}
-
-    double sigma_old = sigma1;
 
     // construct C_{m+1}(x)
     for (int i = 1; i < eig_param->poly_deg; i++) {
@@ -312,15 +310,14 @@ namespace quda
 
       // FIXME - we could introduce a fused mat + blas kernel here, eliminating one temporary
       // mat*C_{m}(x)
-      mat(out, tmp2);
-
-      blas::axpbypczw(d3, tmp1, d2, tmp2, d1, out, tmp1);
-      std::swap(tmp1, tmp2);
+      mat(Az, z);
+      blas::axpbypczw(d3, z_old, d2, z, d1, Az, z_old);
+      std::swap(z, z_old);
 
       sigma_old = sigma;
     }
 
-    for (auto i = 0u; i < in.size(); i++) std::swap(out[i], tmp2[i]);
+    blas::copy(out, z);
   }
 
   double EigenSolver::estimateChebyOpMax(ColorSpinorField &out, ColorSpinorField &in)
