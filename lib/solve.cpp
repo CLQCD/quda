@@ -35,12 +35,13 @@ namespace quda
 
     // overlap dslash uses mass normalization internally
     if (param.dslash_type == QUDA_OVERLAP_DSLASH) {
+      const double two_rho = 8.0 - 1.0 / kappa;
       switch (param.solution_type) {
       case QUDA_MAT_SOLUTION:
-        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(param.mass, b);
+        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(1.0 / two_rho, b);
         break;
       case QUDA_MATDAG_MAT_SOLUTION:
-        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(param.mass * param.mass, b);
+        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(1.0 / (two_rho * two_rho), b);
         break;
       default: errorQuda("Not implemented");
       }
@@ -150,21 +151,16 @@ namespace quda
     in_left.resize(0);
     in_right.resize(0);
     for (size_t i = 0; i < in.size(); i++) {
-      {
-        ColorSpinorField tmp_left(chiralParam);
-        spinorChiralProject(tmp_left, in[i], QUDA_CHIRALITY_LEFT);
-        if (blas::norm2(tmp_left) / nb[i] > 1e-6) {
-          idx_left.push_back(i);
-          in_left.push_back(std::move(tmp_left));
-        }
+      ColorSpinorField tmp_left(chiralParam);
+      ColorSpinorField tmp_right(chiralParam);
+      spinorChiralProject(tmp_left, tmp_right, in[i]);
+      if (blas::norm2(tmp_left) / nb[i] > 1e-6) {
+        idx_left.push_back(i);
+        in_left.push_back(std::move(tmp_left));
       }
-      {
-        ColorSpinorField tmp_right(chiralParam);
-        spinorChiralProject(tmp_right, in[i], QUDA_CHIRALITY_RIGHT);
-        if (blas::norm2(tmp_right) / nb[i] > 1e-6) {
-          idx_right.push_back(i);
-          in_right.push_back(std::move(tmp_right));
-        }
+      if (blas::norm2(tmp_right) / nb[i] > 1e-6) {
+        idx_right.push_back(i);
+        in_right.push_back(std::move(tmp_right));
       }
     }
   }
@@ -175,11 +171,11 @@ namespace quda
   {
     auto tmp = getFieldTmp(out[0]);
     for (size_t i = 0; i < out_left.size(); i++) {
-      spinorChiralEmbed(tmp, out_left[i], QUDA_CHIRALITY_LEFT);
+      spinorChiralReconstruct(tmp, out_left[i], QUDA_LEFT_CHIRALITY);
       blas::xpy(tmp, out[idx_left[i]]);
     }
     for (size_t i = 0; i < out_right.size(); i++) {
-      spinorChiralEmbed(tmp, out_right[i], QUDA_CHIRALITY_RIGHT);
+      spinorChiralReconstruct(tmp, out_right[i], QUDA_RIGHT_CHIRALITY);
       blas::xpy(tmp, out[idx_right[i]]);
     }
   }
@@ -320,8 +316,8 @@ namespace quda
       chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
       chiralParam.setPrecision(chiralParam.Precision(), chiralParam.Precision(), true);
 
-      for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
-        auto &in_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? in_left : in_right;
+      for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
+        auto &in_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? in_left : in_right;
         if (in_chiral.size() > 0) {
           auto tmp = getFieldTmp(out[0]);
           printfQuda("===============Compute Chiral %d===============\n", chirality);
@@ -344,15 +340,15 @@ namespace quda
             const double offset = (mass * mass) / (1.0 - mass * mass);
             const double inv_m = 1.0 / (offset + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
             for (auto &v : alpha) { v *= -inv_m; }
-            spinorChiralEmbed(tmp, tmp_chiral, chirality);
+            spinorChiralReconstruct(tmp, tmp_chiral, chirality);
             blas::block::caxpy(alpha, tmp, out);
           }
         }
       }
 
-      for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
-        auto &in_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? in_left : in_right;
-        auto &out_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? out_left : out_right;
+      for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
+        auto &in_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? in_left : in_right;
+        auto &out_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? out_left : out_right;
         m.setChirality(chirality);
         mSloppy.setChirality(chirality);
         mPre.setChirality(chirality);

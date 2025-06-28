@@ -133,11 +133,12 @@ namespace quda
     ColorSpinorParam param(in[0]);
     param.nSpin = 4;
     param.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+    param.mem_type = QUDA_MEMORY_DEVICE; // TODO: Hack for eigensolver in the host memory
     param.setPrecision(param.Precision(), param.Precision(), true);
     auto in_tmp = getFieldTmp<ColorSpinorField>(in.size(), param);
     auto out_tmp = getFieldTmp<ColorSpinorField>(out.size(), param);
 
-    for (size_t i = 0; i < in.size(); i++) { spinorChiralEmbed(in_tmp[i], in[i], chirality); }
+    for (size_t i = 0; i < in.size(); i++) { spinorChiralReconstruct(in_tmp[i], in[i], chirality); }
     DslashXpay(out_tmp, in_tmp, QUDA_INVALID_PARITY, in_tmp, (mass * mass) / (1.0 - mass * mass));
     for (size_t i = 0; i < out.size(); i++) { spinorChiralProject(out[i], out_tmp[i], chirality); }
   }

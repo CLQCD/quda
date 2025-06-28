@@ -2854,7 +2854,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
     inv_param->solution_type = QUDA_MATPC_SOLUTION;
   } else {
     if (eig_param->use_norm_op)
-      if (eig_param->chirality == QUDA_CHIRALITY_INVALID)
+      if (eig_param->chirality == QUDA_INVALID_CHIRALITY)
         inv_param->solve_type = QUDA_NORMOP_SOLVE;
       else
         inv_param->solve_type = QUDA_NORMOP_CHIRAL_SOLVE;
@@ -2898,7 +2898,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   //------------------------------------------------------
   // Create host wrappers around application vector set
   ColorSpinorParam cpuParam(nullptr, *inv_param, cudaGauge->X(), pc_solve, inv_param->input_location);
-  if (eig_param->chirality != QUDA_CHIRALITY_INVALID) { cpuParam.nSpin = 2; }
+  if (eig_param->chirality != QUDA_INVALID_CHIRALITY) { cpuParam.nSpin = 2; }
 
   int n_eig = eig_param->n_conv;
   if (eig_param->compute_svd) n_eig *= 2;
@@ -2970,7 +2970,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   } else if (!eig_param->use_norm_op && eig_param->use_dagger) {
     m = new DiracMdag(dirac);
   } else if (eig_param->use_norm_op && !eig_param->use_dagger) {
-    if (eig_param->chirality == QUDA_CHIRALITY_INVALID) {
+    if (eig_param->chirality == QUDA_INVALID_CHIRALITY) {
       m = new DiracMdagM(dirac);
     } else {
       m = new DiracMdagMChiral(dirac);
@@ -3804,13 +3804,9 @@ namespace quda
     b_left.resize(0);
     b_right.resize(0);
     {
-      ColorSpinorField tmp_left(chiralParam);
-      spinorChiralProject(tmp_left, b, QUDA_CHIRALITY_LEFT);
+      ColorSpinorField tmp_left(chiralParam), tmp_right(chiralParam);
+      spinorChiralProject(tmp_left, tmp_right, b);
       if (blas::norm2(tmp_left) / nb > 1e-16) { b_left.push_back(std::move(tmp_left)); }
-    }
-    {
-      ColorSpinorField tmp_right(chiralParam);
-      spinorChiralProject(tmp_right, b, QUDA_CHIRALITY_RIGHT);
       if (blas::norm2(tmp_right) / nb > 1e-16) { b_right.push_back(std::move(tmp_right)); }
     }
   }
@@ -3820,11 +3816,11 @@ namespace quda
   {
     auto tmp = getFieldTmp(x[0]);
     for (size_t i = 0; i < x_left.size(); i++) {
-      spinorChiralEmbed(tmp, x_left[i], QUDA_CHIRALITY_LEFT);
+      spinorChiralReconstruct(tmp, x_left[i], QUDA_LEFT_CHIRALITY);
       blas::xpy(tmp, x[i]);
     }
     for (size_t i = 0; i < x_right.size(); i++) {
-      spinorChiralEmbed(tmp, x_right[i], QUDA_CHIRALITY_RIGHT);
+      spinorChiralReconstruct(tmp, x_right[i], QUDA_RIGHT_CHIRALITY);
       blas::xpy(tmp, x[i]);
     }
   }
@@ -3879,7 +3875,7 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
 
   } else { // Wilson type
 
-    if (mat_solution) {
+    if (mat_solution && !chiral_solve) {
       errorQuda("For Wilson-type fermions, multi-shift solver does not support MAT or MATPC solution types");
     }
     if (direct_solve) {
@@ -4056,8 +4052,8 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
     }
 
     // high-mode propagator
-    for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
-      auto &b_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? b_left : b_right;
+    for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
+      auto &b_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? b_left : b_right;
       if (b_chiral.size() > 0) {
         auto tmp = getFieldTmp(x[0]);
         printfQuda("===============Compute Chiral %d===============\n", chirality);
@@ -4077,7 +4073,7 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
           blas::caxpy(alpha, tmp_chiral, b_chiral[0]);
           for (int j = 0; j < param->num_offset; j++) {
             const double inv_m = 1.0 / (param->offset[j] + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
-            spinorChiralEmbed(tmp, tmp_chiral, chirality);
+            spinorChiralReconstruct(tmp, tmp_chiral, chirality);
             blas::caxpy(-inv_m * alpha, tmp, x[j]);
           }
         }
@@ -4087,9 +4083,9 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
 
   SolverParam solverParam(*param);
   if (chiral_solve) {
-    for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
-      auto &b_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? b_left : b_right;
-      auto &x_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? x_left : x_right;
+    for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
+      auto &b_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? b_left : b_right;
+      auto &x_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? x_left : x_right;
       ((DiracMdagMChiral *)m)->setChirality(chirality);
       ((DiracMdagMChiral *)mSloppy)->setChirality(chirality);
       if (b_chiral.size() > 0) {
@@ -4209,9 +4205,9 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
         solverParam.delta = param->reliable_delta_refinement;
 
         if (chiral_solve) {
-          for (QudaChirality chirality : {QUDA_CHIRALITY_LEFT, QUDA_CHIRALITY_RIGHT}) {
-            auto &b_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? b_left : b_right;
-            auto &x_chiral = (chirality == QUDA_CHIRALITY_LEFT) ? x_left : x_right;
+          for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
+            auto &b_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? b_left : b_right;
+            auto &x_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? x_left : x_right;
             ((DiracMdagMChiral *)m)->setChirality(chirality);
             ((DiracMdagMChiral *)mSloppy)->setChirality(chirality);
             if (b_chiral.size() > 0) {
@@ -4259,7 +4255,7 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
       d->setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
       blas::copy(tmp, x[i]);
       d->Mdag(x[i], tmp);
-      d->reconstruct(x[i], b, QUDA_MAT_SOLUTION);
+      d->reconstruct(x[i], b, param->solution_type);
     }
   }
 

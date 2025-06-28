@@ -271,12 +271,6 @@ namespace quda
 
     if (eig_param->poly_deg == 0) errorQuda("Polynomial acceleration requested with zero polynomial degree");
 
-    ColorSpinorParam param(in[0]);
-    param.mem_type = QUDA_MEMORY_DEVICE; // FIXME: Hack for eigensolver in the host memory
-    auto z_old = getFieldTmp<ColorSpinorField>(in.size(), param);
-    auto z = getFieldTmp<ColorSpinorField>(in.size(), param);
-    auto Az = getFieldTmp<ColorSpinorField>(in.size(), param);
-
     // Compute the polynomial accelerated operator.
     double a = eig_param->a_min;
     double b = eig_param->a_max;
@@ -290,12 +284,18 @@ namespace quda
     double d2 = -d1 * theta;
     double d3;
 
+    ColorSpinorParam param(in[0]);
+    param.mem_type = QUDA_MEMORY_DEVICE; // FIXME: Hack for eigensolver in the host memory
+    auto z_old = getFieldTmp<ColorSpinorField>(in.size(), param);
+    auto z = getFieldTmp<ColorSpinorField>(in.size(), param);
+    auto Az = getFieldTmp<ColorSpinorField>(in.size(), param);
+
     // out = d2 * in + d1 * out
     // C_1(x) = x
     blas::copy(z, in);
     mat(Az, z);
     blas::axpbyz(d2, z, d1, Az, z_old);
-    std::swap(z, z_old);
+    std::swap(z_old, z);
 
     // Using Chebyshev polynomial recursion relation,
     // C_{m+1}(x) = 2*x*C_{m} - C_{m-1}
@@ -312,7 +312,7 @@ namespace quda
       // mat*C_{m}(x)
       mat(Az, z);
       blas::axpbypczw(d3, z_old, d2, z, d1, Az, z_old);
-      std::swap(z, z_old);
+      std::swap(z_old, z);
 
       sigma_old = sigma;
     }

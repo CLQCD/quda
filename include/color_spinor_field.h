@@ -1104,20 +1104,37 @@ namespace quda
   void spinorDistanceReweight(ColorSpinorField &src, double alpha0, int t0);
 
   /**
-     @brief Embed a chiral spinor into a full spinor
-     @param[out] dst The colorspinorfield nSpin = 4
-     @param[in] src The colorspinorfield nSpin = 2
-     @param[in] chirality The parameter for chiral embedding
+     @brief Reconstruct a chiral spinor into a full spinor
+     @param[out] dst The reconstructed full spinor nSpin = 4
+     @param[in] src The chiral spinor nSpin = 2
+     @param[in] chirality The chirality of the reconstruction
   */
-  void spinorChiralEmbed(ColorSpinorField &dst, const ColorSpinorField &src, QudaChirality chirality);
+  void spinorChiralReconstruct(ColorSpinorField &dst, const ColorSpinorField &src, QudaChirality chirality);
 
   /**
-     @brief Project a chiral spinor from a full spinor
-     @param[out] dst The colorspinorfield nSpin = 2
-     @param[in] src The colorspinorfield nSpin = 4
-     @param[in] chirality The parameter for chiral projection
+     @brief Reconstruct two chiral spinors into a full spinor
+     @param[out] dst The reconstructed full spinor nSpin = 4
+     @param[in] src_left The left chirality part nSpin = 2
+     @param[in] src_right The right chirality part nSpin = 2
+  */
+  void spinorChiralReconstruct(ColorSpinorField &dst, const ColorSpinorField &src_left,
+                               const ColorSpinorField &src_right);
+
+  /**
+     @brief Project a full spinor to a chiral spinor
+     @param[out] dst The projected chiral spinor nSpin = 2
+     @param[in] src The full spinor nSpin = 4
+     @param[in] chirality The chirality of the projection
   */
   void spinorChiralProject(ColorSpinorField &dst, const ColorSpinorField &src, QudaChirality chirality);
+
+  /**
+     @brief Project a full spinor to two chiral spinors
+     @param[out] dst_left The projected left chirality part nSpin = 2
+     @param[out] dst_right The projected left chirality part nSpin = 2
+     @param[in] src The full spinor nSpin = 4
+  */
+  void spinorChiralProject(ColorSpinorField &dst_left, ColorSpinorField &dst_right, const ColorSpinorField &src);
 
   /**
      @brief Helper function for determining if the spin of the fields is the same.
