@@ -279,8 +279,7 @@ namespace quda
       auto out_left = getFieldTmp<ColorSpinorField>(in_left);
       auto out_right = getFieldTmp<ColorSpinorField>(in_right);
 
-      printfQuda("===============Pre-setttings for the chiral overlap operator===============\n");
-      // 加载 overlap 低模部分特征系统
+      // load the overlap low-mode eigensystem if it exists
       Complex *evals_ov;
       Complex **evecs_ov;
       int n_low = 0;
@@ -316,17 +315,14 @@ namespace quda
       chiralParam.gammaBasis = QUDA_DEGRAND_ROSSI_GAMMA_BASIS;
       chiralParam.setPrecision(chiralParam.Precision(), chiralParam.Precision(), true);
 
+      // low-mode propagator & deflation for chiral overlap
       for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
         auto &in_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? in_left : in_right;
         if (in_chiral.size() > 0) {
           auto tmp = getFieldTmp(out[0]);
-          printfQuda("===============Compute Chiral %d===============\n", chirality);
-
-          printfQuda("===============Compute low-mode propagator===============\n");
           for (int i = 0; i < n_low; i++) {
             auto tmp_chiral = getFieldTmp<ColorSpinorField>(chiralParam);
             spinorChiralProject(tmp_chiral, gpu_evecs[i], chirality);
-            // 计算内积因子
             std::vector<Complex> alpha;
             blas::block::cDotProduct(alpha, tmp_chiral, in_chiral);
             Complex lambda = evals_ov[i];
@@ -346,6 +342,7 @@ namespace quda
         }
       }
 
+      // high-mode propagator for chiral overlap
       for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
         auto &in_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? in_left : in_right;
         auto &out_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? out_left : out_right;
