@@ -5981,6 +5981,7 @@ void performGFlowQuda(void **h_out, void **h_in, QudaInvertParam *inv_param, Qud
   }
 
   popOutputPrefix();
+  popVerbosity();
 
 } /* end of performGFlowQuda */
 
@@ -6118,6 +6119,7 @@ void performAdjGFlowSafe(void **h_out, void **h_in, QudaInvertParam *inv_param, 
   }
 
   popOutputPrefix();
+  popVerbosity();
 }
 
 void adjSafeEvolve(std::vector<std::reference_wrapper<std::vector<ColorSpinorField>>> sf_list,
@@ -6433,6 +6435,7 @@ void performAdjGFlowHier(void **h_out, void **h_in, QudaInvertParam *inv_param, 
 
   logQuda(QUDA_DEBUG_VERBOSE, "Spinor written to cpu \n");
   popOutputPrefix();
+  popVerbosity();
 }
 
 /* save list of gauge vectors */
