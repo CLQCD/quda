@@ -4018,67 +4018,9 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
   std::vector<ColorSpinorField> x_left(b_left.size() * param->num_offset, cudaParam);
   std::vector<ColorSpinorField> x_right(b_right.size() * param->num_offset, cudaParam);
 
-  if (chiral_solve) {
-    // load the overlap low-mode eigensystem if it exists
-    Complex *evals_ov;
-    Complex **evecs_ov;
-    int n_low = 0;
-
-    if (param->ov_n_ev > 0 && param->ov_eigvals != NULL && param->ov_eigvecs != NULL) {
-      n_low = param->ov_n_ev;
-      evals_ov = reinterpret_cast<Complex *>(param->ov_eigvals);
-      evecs_ov = reinterpret_cast<Complex **>(param->ov_eigvecs);
-    } else {
-      errorQuda("No overlap eigensystem loaded.\n");
-    }
-
-    ColorSpinorParam gpuParam(b);
-    gpuParam.create = QUDA_COPY_FIELD_CREATE;
-
-    std::vector<ColorSpinorField> gpu_evecs(n_low);
-    {
-      ColorSpinorParam tmpParam(nullptr, *param, gpuParam.x, false, QUDA_CPU_FIELD_LOCATION);
-      tmpParam.create = QUDA_REFERENCE_FIELD_CREATE;
-
-      for (int i = 0; i < n_low; i++) {
-        tmpParam.v = evecs_ov[i];
-
-        ColorSpinorField cpu_ref(tmpParam);
-        gpuParam.field = &cpu_ref;
-        gpuParam.create = QUDA_COPY_FIELD_CREATE;
-        gpu_evecs[i] = ColorSpinorField(gpuParam);
-      }
-    }
-
-    // low-mode propagator & deflation for chiral overlap
-    for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
-      auto &b_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? b_left : b_right;
-      if (b_chiral.size() > 0) {
-        auto tmp = getFieldTmp(x[0]);
-        for (int i = 0; i < n_low; i++) {
-          auto tmp_chiral = getFieldTmp<ColorSpinorField>(cudaParam);
-          spinorChiralProject(tmp_chiral, gpu_evecs[i], chirality);
-          Complex alpha = blas::cDotProduct(tmp_chiral, b_chiral[0]);
-          Complex lambda = evals_ov[i];
-          if (sqrt(std::fabs(lambda.real())) <= 100 * std::fabs(lambda.imag())) {
-            alpha *= -2.0;
-          } else {
-            alpha *= -1.0;
-          }
-          blas::caxpy(alpha, tmp_chiral, b_chiral[0]);
-          for (int j = 0; j < param->num_offset; j++) {
-            const double inv_m = 1.0 / (param->offset[j] + lambda.real() * lambda.real() + lambda.imag() * lambda.imag());
-            spinorChiralReconstruct(tmp, tmp_chiral, chirality);
-            blas::caxpy(-inv_m * alpha, tmp, x[j]);
-          }
-        }
-      }
-    }
-  }
-
   SolverParam solverParam(*param);
   if (chiral_solve) {
-    // high-mode propagator for chiral overlap
+    // high-mode propagator for chiral overlap fermion
     for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
       auto &b_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? b_left : b_right;
       auto &x_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? x_left : x_right;

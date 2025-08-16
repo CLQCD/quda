@@ -456,9 +456,6 @@ extern "C" {
 
     /** Parameters for overlap fermion */
     double overlap_invsqrt_tol;
-    int ov_n_ev;
-    double_complex *ov_eigvals;
-    double_complex **ov_eigvecs;
     double *ov_masses;
 
     /**
@@ -1223,7 +1220,6 @@ extern "C" {
 
   void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param);
   void freeOverlapQuda();
-  void invertOverlapMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param);
 
   /**
    * Perform the solve, according to the parameters set in param.  It
