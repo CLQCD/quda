@@ -531,7 +531,7 @@ void initQudaDevice(int dev)
 /*
  * Any persistent memory allocations that QUDA uses are done here.
  */
-void initQudaMemory()
+void initQudaMemory(void)
 {
   auto profile = pushProfile(profileInit);
   profileInit.TPSTART(QUDA_PROFILE_INIT);
@@ -557,7 +557,7 @@ void initQudaMemory()
   profileInit.TPSTOP(QUDA_PROFILE_INIT);
 }
 
-void updateR()
+void updateR(void)
 {
   for (int d=0; d<4; d++) R[d] = 2 * (redundant_comms || commDimPartitioned(d));
 }
@@ -705,7 +705,7 @@ void loadGaugeQuda(void *h_gauge, QudaGaugeParam *param)
   // set update_split_gauge to reuse backup or not and free the buf if needed
   // always update the flag even gauge reuse with checksum
   // better way would be do the checks more consistently along with clover/stagger
-  if (param->use_split_gauge_bkup == true) {
+  if (param->use_split_gauge_bkup) {
     update_split_gauge = QUDA_UPDATE_SPLIT_GAUGE_TRUE;
   } else {
     update_split_gauge = QUDA_UPDATE_SPLIT_GAUGE_OFF;

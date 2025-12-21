@@ -113,9 +113,9 @@ namespace quda {
 
           // redefine site_unroll with device_store types to ensure we have correct N/Ny/M values
           constexpr bool site_unroll = !std::is_same<device_store_t, device_y_store_t>::value || isFixed<device_store_t>::value;
-          constexpr int N = n_vector<device_store_t, true, nSpin, site_unroll>();
-          constexpr int Ny = n_vector<device_y_store_t, true, nSpin, site_unroll>();
-          constexpr int M = site_unroll ? n_vector<device_store_t, false, nSpin, true>() : N; // real numbers per thread
+          constexpr int N = n_vector<device_store_t, true>(nSpin, site_unroll);
+          constexpr int Ny = n_vector<device_y_store_t, true>(nSpin, site_unroll);
+          constexpr int M = site_unroll ? n_vector<device_store_t, false>(nSpin, true) : N; // real numbers per thread
           const int length = x[0].Length() / (nParity * M);
 
           if (tp.aux.x > 1 && (length * tp.aux.x) % device::warp_size() != 0) {
