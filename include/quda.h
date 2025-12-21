@@ -456,7 +456,6 @@ extern "C" {
 
     /** Parameters for overlap fermion */
     double overlap_invsqrt_tol;
-    double *ov_masses;
 
     /**
      * Parameters for distance preconditioning algorithm proposed in arXiv:1006.4028,
