@@ -118,8 +118,7 @@ namespace quda {
         }
 
         Link force = arg.force(mu, x_cb, parity);
-        Link U = arg.U(mu, x_cb, parity);
-        force = force + U * result;
+        force += result;
         arg.force(mu, x_cb, parity) = force;
       }
     }
@@ -172,8 +171,7 @@ namespace quda {
       }
 
       Link temp = arg.force(Arg::dim, bulk_cb_idx, parity);
-      Link U = arg.U(Arg::dim, bulk_cb_idx, parity);
-      result = temp + U * result;
+      result += temp;
       arg.force(Arg::dim, bulk_cb_idx, parity) = result;
     }
   };

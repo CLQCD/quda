@@ -1030,8 +1030,8 @@ namespace quda {
 
       static constexpr int overlap = 0;
 
-      CompleteForceArg(GaugeField &force, const GaugeField &link)
-        : BaseForceArg(link, overlap), force(force), oProd(force), coeff(0.0)
+      CompleteForceArg(GaugeField &force, const GaugeField &oProd, const GaugeField &link) :
+        BaseForceArg(link, overlap), force(force), oProd(oProd), coeff(0.0)
       { }
 
     };
@@ -1052,15 +1052,11 @@ namespace quda {
         int e_cb = linkExtendedIndexMILC(x, arg);
 
 #pragma unroll
-        for (int sig=0; sig<4; ++sig) {
-          Link Uw = arg.link(sig, e_cb, parity);
+        for (int sig = 0; sig < 4; ++sig) {
           Link Ox = arg.oProd(sig, e_cb, parity);
-          Link Ow = Uw * Ox;
-
-          makeAntiHerm(Ow);
 
           typename Arg::real coeff = (parity==1) ? -1.0 : 1.0;
-          arg.force(sig, e_cb, parity) = coeff * Ow;
+          arg.force(sig, x_cb, parity) = coeff * Ox;
         }
       }
     };

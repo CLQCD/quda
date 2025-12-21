@@ -22,7 +22,7 @@ namespace quda {
      @param force Force field
      @param func The function calling this (fname will be printed if force monitoring is enabled)
    */
-  void updateMomentum(GaugeField &mom, double coeff, GaugeField &force, const char *fname);
+  void updateMomentum(GaugeField &mom, double coeff, const GaugeField &gauge, const GaugeField &force, const char *fname);
 
   /**
      Left multiply the force field by the gauge field

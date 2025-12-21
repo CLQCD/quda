@@ -99,7 +99,7 @@ namespace quda
     // compute the insertion of oprod in Fig.27 of hep-lat/0112051
     cloverDerivative(force, gaugeEx, oprod, 1.0);
 
-    updateMomentum(mom, -1.0, force, "clover");
+    updateMomentum(mom, -1.0, gauge, force, "clover");
 
     getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
 

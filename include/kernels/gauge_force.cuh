@@ -9,11 +9,12 @@
 
 namespace quda {
 
-  template <typename store_t, int nColor_, QudaReconstructType recon_u, QudaReconstructType recon_m, bool force_>
+  template <typename store_t, int nColor_, QudaReconstructType recon_u, QudaReconstructType recon_m, bool force_, bool mom_>
   struct GaugeForceArg : kernel_param<> {
     using real = typename mapper<store_t>::type;
     static constexpr int nColor = nColor_;
     static constexpr bool compute_force = force_;
+    static constexpr bool update_mom = mom_;
     using Link = Matrix<complex<real>, nColor>;
     static_assert(nColor == 3, "Only nColor=3 enabled at this time");
     using Gauge = typename gauge_mapper<real,recon_u>::type;
@@ -81,16 +82,22 @@ namespace quda {
         accum = accum + coeff * link_prod;
       } //i
 
-      // multiply by U(x)
-      link_prod = arg.u(dir, linkIndex(x,arg.E), parity);
-      link_prod = link_prod * accum;
-
       // update mom(x)
       Link mom = arg.mom(dir, x_cb, parity);
       if (arg.compute_force) {
-        mom = mom - arg.epsilon * link_prod;
-        makeAntiHerm(mom);
+        if (arg.update_mom) {
+          // multiply by U(x)
+          link_prod = arg.u(dir, linkIndex(x, arg.E), parity);
+          link_prod = link_prod * accum;
+          mom = mom - arg.epsilon * link_prod;
+          makeAntiHerm(mom);
+        } else {
+          mom = mom - arg.epsilon * accum;
+        }
       } else {
+        // multiply by U(x)
+        link_prod = arg.u(dir, linkIndex(x, arg.E), parity);
+        link_prod = link_prod * accum;
         mom = mom + arg.epsilon * link_prod;
       }
       arg.mom(dir, x_cb, parity) = mom;

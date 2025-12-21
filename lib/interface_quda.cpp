@@ -4098,9 +4098,11 @@ int computeGaugeForceQuda(void* mom, void* siteLink,  int*** input_path_buf, int
     // if we are monitoring the force, separate the force computation from the momentum update
     GaugeFieldParam gParam(cudaMom);
     gParam.create = QUDA_ZERO_FIELD_CREATE;
+    gParam.reconstruct = QUDA_RECONSTRUCT_NO;
+    gParam.setPrecision(qudaGaugeParam->cuda_prec, true);
     GaugeField force(gParam);
     gaugeForce(force, *cudaGauge, 1.0, input_path_v, path_length_v, loop_coeff_v, num_paths, max_length);
-    updateMomentum(cudaMom, eb3, force, "gauge");
+    updateMomentum(cudaMom, eb3, *cudaGauge, force, "gauge");
   }
 
   if (qudaGaugeParam->return_result_mom) cpuMom.copy(cudaMom);
@@ -4407,8 +4409,8 @@ void computeStaggeredForceQuda(void *h_mom, double dt, double delta, void *, voi
   }
 
   // mom += delta * [U * force]TA
-  applyU(cudaForce, *gaugePrecise);
-  updateMomentum(cudaMom, dt * delta, cudaForce, "staggered");
+  // applyU(cudaForce, *gaugePrecise);
+  updateMomentum(cudaMom, dt * delta, *gaugePrecise, cudaForce, "staggered");
 
   // copy the momentum field back to the host
   if (gauge_param->return_result_mom) cpuMom.copy(cudaMom);
@@ -4558,22 +4560,23 @@ void computeHISQForceQuda(void* const milc_momentum,
 #endif
 
   // Copy outer product fields into input force fields
-  oParam.create = QUDA_NULL_FIELD_CREATE;
-  oParam.nFace = 1;
-  oParam.pad = pad_size;
-  oParam.ghostExchange = QUDA_GHOST_EXCHANGE_EXTENDED;
+  GaugeFieldParam oParamEx(oParam);
+  oParamEx.create = QUDA_NULL_FIELD_CREATE;
+  oParamEx.nFace = 1;
+  oParamEx.pad = pad_size;
+  oParamEx.ghostExchange = QUDA_GHOST_EXCHANGE_EXTENDED;
   lat_dim_t R = {2 * comm_dim_partitioned(0), 2 * comm_dim_partitioned(1), 2 * comm_dim_partitioned(2),
                  2 * comm_dim_partitioned(3)};
   for (int dir = 0; dir < 4; ++dir) {
-    oParam.x[dir] += 2 * R[dir];
-    oParam.r[dir] = R[dir];
+    oParamEx.x[dir] += 2 * R[dir];
+    oParamEx.r[dir] = R[dir];
   }
 
-  GaugeField cudaInForce(oParam);
+  GaugeField cudaInForce(oParamEx);
   copyExtendedGauge(cudaInForce, stapleOprod, QUDA_CUDA_FIELD_LOCATION);
   stapleOprod = GaugeField();
 
-  GaugeField cudaOutForce(oParam);
+  GaugeField cudaOutForce(oParamEx);
   copyExtendedGauge(cudaOutForce, oneLinkOprod, QUDA_CUDA_FIELD_LOCATION);
   oneLinkOprod = GaugeField();
 
@@ -4701,11 +4704,14 @@ void computeHISQForceQuda(void* const milc_momentum,
 
   cudaInForce = GaugeField();
 
-  hisqCompleteForce(cudaOutForce, cudaULink);
+  GaugeField cudaForce(oParam);
+  hisqCompleteForce(cudaForce, cudaOutForce, cudaULink);
 
   if (gParam->use_resident_mom && !momResident.Length()) errorQuda("No resident momentum field to use");
   GaugeField mom = gParam->use_resident_mom ? momResident.create_alias() : GaugeField(momParam);
-  updateMomentum(mom, dt, cudaOutForce, "hisq");
+  updateMomentum(mom, dt, cudaULink, cudaForce, "hisq");
+
+  cudaForce = GaugeField();
 
   // Close the paths, make anti-hermitian, and store in compressed format
   if (gParam->return_result_mom) cpuMom.copy(mom);

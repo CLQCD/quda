@@ -657,15 +657,13 @@ namespace quda {
 
       Arg &arg;
       GaugeField &force;
+      const GaugeField &oprod;
       const GaugeField &meta;
       unsigned int minThreads() const override { return arg.threads.x; }
 
     public:
-      HisqCompleteLinkForce(Arg &arg, GaugeField &force, const GaugeField &meta) :
-        TunableKernel2D(meta, 2),
-        arg(arg),
-        force(force),
-        meta(meta)
+      HisqCompleteLinkForce(Arg &arg, GaugeField &force, const GaugeField &oprod, const GaugeField &meta) :
+        TunableKernel2D(meta, 2), arg(arg), force(force), oprod(oprod), meta(meta)
       {
         strcat(aux, comm_dim_partitioned_string());
 
@@ -695,30 +693,30 @@ namespace quda {
         return 2ll * arg.threads.x * (198ll * multiplies_per_site + 18ll * rescales_per_site + 23ll * antiherm_per_site);
       }
 
-      long long bytes() const override {
-        long long link_bytes_per_site = 4ll * arg.link.Bytes();
+      long long bytes() const override
+      {
         long long cm_bytes_per_site = 4ll * (arg.force.Bytes() + arg.oProd.Bytes());
-        return 2 * arg.threads.x * (link_bytes_per_site + cm_bytes_per_site);
+        return 2 * arg.threads.x * cm_bytes_per_site;
       }
     };
 
     template <typename real, int nColor, QudaReconstructType recon, QudaStaggeredPhase phase = QUDA_STAGGERED_PHASE_NO>
     struct HisqCompleteForce {
-      HisqCompleteForce(const GaugeField &link, GaugeField &force)
+      HisqCompleteForce(const GaugeField &link, GaugeField &force, const GaugeField &oprod)
       {
-        CompleteForceArg<real, nColor, recon, phase> arg(force, link);
-        HisqCompleteLinkForce<decltype(arg)> completeForce(arg, force, link);
+        CompleteForceArg<real, nColor, recon, phase> arg(force, oprod, link);
+        HisqCompleteLinkForce<decltype(arg)> completeForce(arg, force, oprod, link);
       }
     };
 
-    void hisqCompleteForce(GaugeField &force, const GaugeField &link)
+    void hisqCompleteForce(GaugeField &force, const GaugeField &oprod, const GaugeField &link)
     {
       if constexpr (is_enabled<QUDA_STAGGERED_DSLASH>()) {
         getProfile().TPSTART(QUDA_PROFILE_COMPUTE);
-        checkNative(link, force);
-        checkLocation(force, link);
-        checkPrecision(link, force);
-        instantiateGaugeStaggered<HisqCompleteForce>(link, force);
+        checkNative(force, oprod, link);
+        checkLocation(force, oprod, link);
+        checkPrecision(force, oprod, link);
+        instantiateGaugeStaggered<HisqCompleteForce>(link, force, oprod);
         getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
       } else {
         errorQuda("HISQ force requires staggered operator to be enabled");

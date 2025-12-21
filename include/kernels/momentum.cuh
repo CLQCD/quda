@@ -62,22 +62,20 @@ namespace quda {
     static constexpr int nColor = nColor_;
     static constexpr QudaReconstructType recon = recon_;
     typename gauge_mapper<Float, QUDA_RECONSTRUCT_10>::type mom;
-    typename gauge_mapper<Float, recon>::type force;
+    typename gauge_mapper<Float, recon>::type gauge;
+    typename gauge_mapper<Float, QUDA_RECONSTRUCT_NO>::type force;
     Float coeff;
     int X[4]; // grid dimensions on mom
-    int E[4]; // grid dimensions on force (possibly extended)
+    int E[4]; // grid dimensions on gauge (possibly extended)
     int border[4]; //
 
-    UpdateMomArg(GaugeField &mom, const Float &coeff, const GaugeField &force) :
-      ReduceArg<reduce_t>(dim3(mom.VolumeCB(), 2, 1)),
-      mom(mom),
-      force(force),
-      coeff(coeff)
+    UpdateMomArg(GaugeField &mom, const Float &coeff, const GaugeField &gauge, const GaugeField &force) :
+      ReduceArg<reduce_t>(dim3(mom.VolumeCB(), 2, 1)), mom(mom), gauge(gauge), force(force), coeff(coeff)
     {
       for (int dir=0; dir<4; ++dir) {
         X[dir] = mom.X()[dir];
-        E[dir] = force.X()[dir];
-        border[dir] = force.R()[dir];
+        E[dir] = gauge.X()[dir];
+        border[dir] = gauge.R()[dir];
       }
     }
   };
@@ -103,9 +101,11 @@ namespace quda {
 #pragma unroll
       for (int d=0; d<4; d++) {
         Matrix<complex<typename Arg::Float>, Arg::nColor> m = arg.mom(d, x_cb, parity);
-        Matrix<complex<typename Arg::Float>, Arg::nColor> f = arg.force(d, e_cb, parity);
+        Matrix<complex<typename Arg::Float>, Arg::nColor> g = arg.gauge(d, e_cb, parity);
+        Matrix<complex<typename Arg::Float>, Arg::nColor> f = arg.force(d, x_cb, parity);
 
         // project to traceless anti-hermitian prior to taking norm
+        f = g * f;
         makeAntiHerm(f);
 
         // compute force norms

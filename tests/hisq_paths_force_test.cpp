@@ -512,8 +512,8 @@ static int hisq_force_test(bool lepage)
   }
 
   host_timer.start();
-  fermion_force::hisqCompleteForce(*cudaForce_ex, *cudaGauge_ex);
-  updateMomentum(*cudaMom, 1.0, *cudaForce_ex, __func__);
+  fermion_force::hisqCompleteForce(*cudaForce, *cudaForce_ex, *cudaGauge_ex);
+  updateMomentum(*cudaMom, 1.0, *cudaGauge_ex, *cudaForce, __func__);
   qudaDeviceSynchronize();
   host_timer.stop();
   complete_time_sec = host_timer.last();

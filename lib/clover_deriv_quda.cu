@@ -38,7 +38,7 @@ namespace quda {
     }
     long long bytes() const override
     {
-      return (16 * gauge.Reconstruct() + 8 * oprod.Reconstruct() + 2 * force.Reconstruct()) * 12 * gauge.Precision()
+      return (12 * gauge.Reconstruct() + 8 * oprod.Reconstruct() + 2 * force.Reconstruct()) * 12 * gauge.Precision()
         * gauge.LocalVolume();
     }
   };

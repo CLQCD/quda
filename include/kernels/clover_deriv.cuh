@@ -46,9 +46,6 @@ namespace quda
     {
       byte_array<int8_t, 4> d = {};
 
-      // load U(x)_(+mu)
-      Link U1 = arg.gauge(mu, linkIndexShift(x, d, arg.E), parity);
-
       // load U(x+mu)_(+nu)
       d[mu]++;
       Link U2 = arg.gauge(nu, linkIndexShift(x, d, arg.E), otherparity);
@@ -64,12 +61,12 @@ namespace quda
 
       // load Oprod
       Link Oprod1 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), parity);
-      Link force = U1 * U2 * conj(U3) * conj(U4) * Oprod1;
+      Link force = U2 * conj(U3) * conj(U4) * Oprod1;
 
       d[mu]++;
       d[nu]++;
       Link Oprod2 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), parity);
-      force += U1 * U2 * Oprod2 * conj(U3) * conj(U4);
+      force += U2 * Oprod2 * conj(U3) * conj(U4);
 
       if (nu < mu)
         force_total -= force;
@@ -97,20 +94,17 @@ namespace quda
       d[mu]--;
       d[nu]++;
 
-      // load U(x)_(+mu)
-      Link U4 = arg.gauge(mu, linkIndexShift(x, d, arg.E), parity);
-
       d[mu]++;
       d[nu]--;
       Link Oprod1 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), parity);
-      Link force = conj(U1) * U2 * Oprod1 * U3 * conj(U4);
+      Link force = conj(U3) * conj(Oprod1) * conj(U2) * U1;
 
       d[mu]--;
       d[nu]++;
       Link Oprod4 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), parity);
-      force += Oprod4 * conj(U1) * U2 * U3 * conj(U4);
+      force += conj(U3) * conj(U2) * U1 * conj(Oprod4);
 
-      if (nu < mu)
+      if (nu > mu)
         force_total += force;
       else
         force_total -= force;
@@ -118,9 +112,6 @@ namespace quda
 
     {
       byte_array<int8_t, 4> d = {};
-
-      // load U(x)_(+mu)
-      Link U1 = arg.gauge(mu, linkIndexShift(x, d, arg.E), parity);
 
       // load U(x+mu)_(+nu)
       d[mu]++;
@@ -138,13 +129,13 @@ namespace quda
       // load opposite parity Oprod
       d[nu]++;
       Link Oprod3 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), otherparity);
-      Link force = U1 * U2 * conj(U3) * Oprod3 * conj(U4);
+      Link force = U2 * conj(U3) * Oprod3 * conj(U4);
 
       // load Oprod(x+mu)
       d[nu]--;
       d[mu]++;
       Link Oprod4 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), otherparity);
-      force += U1 * Oprod4 * U2 * conj(U3) * conj(U4);
+      force += Oprod4 * U2 * conj(U3) * conj(U4);
 
       if (nu < mu)
         force_total -= force;
@@ -174,20 +165,17 @@ namespace quda
       d[mu]--;
       d[nu]++;
 
-      // load U(x)_(+mu)
-      Link U4 = arg.gauge(mu, linkIndexShift(x, d, arg.E), parity);
-
       // load Oprod(x+mu)
       d[mu]++;
       Link Oprod1 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), otherparity);
-      Link force = conj(U1) * U2 * U3 * Oprod1 * conj(U4);
+      Link force = conj(Oprod1) * conj(U3) * conj(U2) * U1;
 
       d[mu]--;
       d[nu]--;
       Link Oprod2 = arg.oprod(tidx, linkIndexShift(x, d, arg.E), otherparity);
-      force += conj(U1) * Oprod2 * U2 * U3 * conj(U4);
+      force += conj(U3) * conj(U2) * conj(Oprod2) * U1;
 
-      if (nu < mu)
+      if (nu > mu)
         force_total += force;
       else
         force_total -= force;

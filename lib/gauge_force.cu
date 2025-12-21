@@ -5,7 +5,8 @@
 
 namespace quda {
 
-  template <typename Float, int nColor, QudaReconstructType recon_u, bool compute_force=true> class ForceGauge : public TunableKernel3D
+  template <typename Float, int nColor, QudaReconstructType recon_u, bool compute_force = true, bool update_mom = true>
+  class ForceGauge : public TunableKernel3D
   {
     const GaugeField &u;
     GaugeField &mom;
@@ -30,8 +31,9 @@ namespace quda {
     void apply(const qudaStream_t &stream)
     {
       TuneParam tp = tuneLaunch(*this, getTuning(), getVerbosity());
-      launch<GaugeForce>(tp, stream, GaugeForceArg<Float, nColor, recon_u,
-                         compute_force ? QUDA_RECONSTRUCT_10 : QUDA_RECONSTRUCT_NO, compute_force>(mom, u, epsilon, p));
+      launch<GaugeForce>(tp, stream, GaugeForceArg < Float, nColor, recon_u,
+                         compute_force ? (update_mom ? QUDA_RECONSTRUCT_10 : QUDA_RECONSTRUCT_NO) : QUDA_RECONSTRUCT_NO,
+                         compute_force, update_mom > (mom, u, epsilon, p));
     }
 
     void preTune() { mom.backup(); }
@@ -41,9 +43,14 @@ namespace quda {
     long long bytes() const { return (p.count + 1ll) * u.Bytes() + 2 * mom.Bytes(); }
   };
 
-  template<typename Float, int nColor, QudaReconstructType recon_u> using GaugeForce_ = ForceGauge<Float,nColor,recon_u,true>;
+  template <typename Float, int nColor, QudaReconstructType recon_u>
+  using GaugeForceUpdateMom = ForceGauge<Float, nColor, recon_u, true, true>;
 
-  template<typename Float, int nColor, QudaReconstructType recon_u> using GaugePath = ForceGauge<Float,nColor,recon_u,false>;
+  template <typename Float, int nColor, QudaReconstructType recon_u>
+  using GaugeForce_ = ForceGauge<Float, nColor, recon_u, true, false>;
+
+  template <typename Float, int nColor, QudaReconstructType recon_u>
+  using GaugePath = ForceGauge<Float, nColor, recon_u, false, false>;
 
   void gaugeForce(GaugeField& mom, const GaugeField& u, double epsilon, std::vector<int**>& input_path,
                   std::vector<int>& length, std::vector<double>& path_coeff, int num_paths, int path_max_length)
@@ -51,12 +58,16 @@ namespace quda {
     getProfile().TPSTART(QUDA_PROFILE_COMPUTE);
     checkPrecision(mom, u);
     checkLocation(mom, u);
-    if (mom.Reconstruct() != QUDA_RECONSTRUCT_10) errorQuda("Reconstruction type %d not supported", mom.Reconstruct());
+    if (mom.Reconstruct() != QUDA_RECONSTRUCT_10 && mom.Reconstruct() != QUDA_RECONSTRUCT_NO)
+      errorQuda("Reconstruction type %d not supported", mom.Reconstruct());
 
     paths<4> p(input_path, length, path_coeff, num_paths, path_max_length);
 
     // gauge field must be passed as first argument so we peel off its reconstruct type
-    instantiate<GaugeForce_>(u, mom, epsilon, p);
+    if (mom.Reconstruct() == QUDA_RECONSTRUCT_10)
+      instantiate<GaugeForceUpdateMom>(u, mom, epsilon, p);
+    else
+      instantiate<GaugeForce_>(u, mom, epsilon, p);
     p.free();
     getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
   }

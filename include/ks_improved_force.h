@@ -38,8 +38,7 @@ namespace quda {
        with new projection
        @param[in] link Thin-link gauge field
     */
-    void hisqCompleteForce(GaugeField &oprod,
-                           const GaugeField &link);
+    void hisqCompleteForce(GaugeField &force, const GaugeField &oprod, const GaugeField &link);
 
     /**
        @brief Set the constant parameters for the force unitarization

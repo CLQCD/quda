@@ -124,11 +124,10 @@ namespace quda {
     long long bytes() const override
     {
       if (kernel == INTERIOR) {
-        return 8 * (x.Bytes() + p.Bytes()) + 2 * force.Bytes() + U.Bytes();
+        return 8 * (x.Bytes() + p.Bytes()) + 2 * force.Bytes();
       } else {
         return 2 * minThreads()
-          * (n_flavor * p.size() * nColor * (2 * x.Nspin() + 2 * x.Nspin() / 2) * 2 + 2 * force.Reconstruct()
-             + U.Reconstruct())
+          * (n_flavor * p.size() * nColor * (2 * x.Nspin() + 2 * x.Nspin() / 2) * 2 + 2 * force.Reconstruct())
           * sizeof(Float);
       }
     }

@@ -104,17 +104,15 @@ namespace quda {
   template <typename Float, int nColor, QudaReconstructType recon>
   class UpdateMom : TunableReduction2D {
     using Arg = UpdateMomArg<Float, nColor, recon>;
+    const GaugeField &gauge;
     const GaugeField &force;
     GaugeField &mom;
     double coeff;
     typename Arg::reduce_t force_max;
 
   public:
-    UpdateMom(const GaugeField &force, GaugeField &mom, double coeff, const char *fname) :
-      TunableReduction2D(mom),
-      force(force),
-      mom(mom),
-      coeff(coeff)
+    UpdateMom(const GaugeField &gauge, const GaugeField &force, GaugeField &mom, double coeff, const char *fname) :
+      TunableReduction2D(mom), gauge(gauge), force(force), mom(mom), coeff(coeff)
     {
       apply(device::get_default_stream());
       if (forceMonitor()) forceRecord(force_max, coeff, fname);
@@ -123,24 +121,24 @@ namespace quda {
     void apply(const qudaStream_t &stream)
     {
       TuneParam tp = tuneLaunch(*this, getTuning(), getVerbosity());
-      Arg arg(mom, coeff, force);
+      Arg arg(mom, coeff, gauge, force);
       launch<MomUpdate>(force_max, tp, stream, arg);
     }
 
     void preTune() { mom.backup();}
     void postTune() { mom.restore();}
     long long flops() const { return 4 * mom.Volume() * (36+42); }
-    long long bytes() const { return 2 * mom.Bytes() + force.Bytes(); }
+    long long bytes() const { return 2 * mom.Bytes() + gauge.Bytes() + force.Bytes(); }
   };
 
-  void updateMomentum(GaugeField &mom, double coeff, GaugeField &force, const char *fname)
+  void updateMomentum(GaugeField &mom, double coeff, const GaugeField &gauge, const GaugeField &force, const char *fname)
   {
     getProfile().TPSTART(QUDA_PROFILE_COMPUTE);
     if (mom.Reconstruct() != QUDA_RECONSTRUCT_10)
       errorQuda("Momentum field with reconstruct %d not supported", mom.Reconstruct());
 
-    checkPrecision(mom, force);
-    instantiate<UpdateMom, ReconstructMom>(force, mom, coeff, fname);
+    checkPrecision(mom, gauge, force);
+    instantiate<UpdateMom, ReconstructGauge>(gauge, force, mom, coeff, fname);
     getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
   }
 
