@@ -2918,11 +2918,9 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   // Create device side ColorSpinorField vector space to pass to the
   // compute function. Download any user supplied data as an initial guess.
   ColorSpinorParam cudaParam(cpuParam, *inv_param, QUDA_CUDA_FIELD_LOCATION);
-  cudaParam.create = QUDA_ZERO_FIELD_CREATE;
+  cudaParam.create = QUDA_NULL_FIELD_CREATE;
   cudaParam.setPrecision(inv_param->cuda_prec_eigensolver, inv_param->cuda_prec_eigensolver, true);
-  // Overlap fermion will use almost all device memroy to construct the operator
-  // and so we need to ensure that the eigenvectors are stored in pinned memory.
-  if (inv_param->dslash_type == QUDA_OVERLAP_DSLASH) { cudaParam.mem_type = QUDA_MEMORY_HOST_PINNED; }
+  cudaParam.mem_type = eig_param->mem_type_ritz;
   // Ensure device vectors qre in UKQCD basis for Wilson type fermions
   if (cudaParam.nSpin == 4) cudaParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
 

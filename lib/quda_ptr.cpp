@@ -110,7 +110,6 @@ namespace quda
     switch (type) {
     case QUDA_MEMORY_DEVICE:
     case QUDA_MEMORY_DEVICE_PINNED:
-    case QUDA_MEMORY_HOST_PINNED: // Host pinned memory is visible to the device
     case QUDA_MEMORY_MAPPED:
     case QUDA_MEMORY_MANAGED: return true;
     default: return false;
@@ -122,7 +121,6 @@ namespace quda
     switch (type) {
     case QUDA_MEMORY_HOST:
     case QUDA_MEMORY_HOST_PINNED:
-    case QUDA_MEMORY_MAPPED:
     case QUDA_MEMORY_MANAGED: return true;
     default: return false;
     }
