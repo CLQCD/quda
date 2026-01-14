@@ -3013,7 +3013,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   // multiply by gamma5. Each combination requires a unique Dirac operator
   // object.
   DiracMatrix *m = nullptr;
-  if (eig_param->chirality == QUDA_INVALID_CHIRALITY) {
+  if (eig_param->chirality != QUDA_INVALID_CHIRALITY) {
     m = new DiracMdagMChiral(dirac);
     ((DiracMdagMChiral *)m)->setChirality(eig_param->chirality);
   } else if (!eig_param->use_norm_op && !eig_param->use_dagger && eig_param->compute_gamma5) {
@@ -3970,10 +3970,7 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
   // Balint: Isn't there a nice construction pattern we could use here? This is
   // expedient but yucky.
   //  DiracParam diracParam;
-  if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-      param->dslash_type == QUDA_STAGGERED_DSLASH){
-    param->mass = sqrt(param->offset[0]/4);
-  }
+  if (param->dslash_type == QUDA_ASQTAD_DSLASH || param->dslash_type == QUDA_STAGGERED_DSLASH) { param->mass = 0.0; }
 
   // We solve m / (1 - m) + D in multi-shift solver
   // But we actually use m + (1 - m) D as DiracOverlap::M()
@@ -4142,13 +4139,6 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
         logQuda(QUDA_SUMMARIZE, "Refining shift %d: L2 residual %e / %e, heavy quark %e / %e (actual / requested)\n", i,
                 param->true_res_offset[i], param->tol_offset[i], rsd_hq, tol_hq);
 
-        // for staggered the shift is just a change in mass term (FIXME: for twisted mass also)
-        if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-            param->dslash_type == QUDA_STAGGERED_DSLASH) {
-          dirac.setMass(sqrt(param->offset[i]/4));
-          diracSloppy.setMass(sqrt(param->offset[i]/4));
-        }
-
         DiracMatrix *m, *mSloppy;
 
         if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
@@ -4163,11 +4153,8 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
           mSloppy = new DiracMdagM(diracSloppy);
         }
 
-        // need to curry in the shift if we are not doing staggered
-        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
-          m->shift = param->offset[i];
-          mSloppy->shift = param->offset[i];
-        }
+        m->shift = param->offset[i];
+        mSloppy->shift = param->offset[i];
 
         if (false) { // experimenting with Minimum residual extrapolation
                      // only perform MRE using current and previously refined solutions
@@ -4228,12 +4215,6 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
         solverParam.true_res_hq_offset[i] = static_cast<double>(solverParam.true_res_hq);
         solverParam.updateInvertParam(*param,i);
 
-        if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
-            param->dslash_type == QUDA_STAGGERED_DSLASH) {
-          dirac.setMass(sqrt(param->offset[0]/4)); // restore just in case
-          diracSloppy.setMass(sqrt(param->offset[0]/4)); // restore just in case
-        }
-
         delete m;
         delete mSloppy;
       }
@@ -4243,15 +4224,15 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
   if (chiral_solve) { combineChiral(x_left, x_right, x); }
 
   // We have to reconstruct the solution for overlap fermions
-  if (param->dslash_type==QUDA_OVERLAP_DSLASH) {
+  if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
     auto tmp = getFieldTmp(x[0]);
     for (int i = 0; i < param->num_offset; i++) {
-      double mass = sqrt(param->offset[i] / (param->offset[i] + 1.0))
+      double mass = sqrt(param->offset[i] / (param->offset[i] + 1.0));
       // (m^2 / (1 - m^2) + D)^{-1} ==> (m^2 + (1 - m^2) D)^{-1}
       blas::ax(1 / (1 - mass * mass), x[i]);
       d->setMass(mass);
       if (mat_solution) {
-        blas::copy(tmp, x[i])
+        blas::copy(tmp, x[i]);
         d->Mdag(x[i], tmp);
       }
       d->reconstruct(x[i], b, param->solution_type);

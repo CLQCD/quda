@@ -285,7 +285,7 @@ namespace quda
     double d3;
 
     ColorSpinorParam param(in[0]);
-    param.mem_type = QUDA_MEMORY_DEVICE; // FIXME: Hack for Ritz vectors on the host memory
+    param.mem_type = QUDA_MEMORY_DEVICE;                         // FIXME: Hack for Ritz vectors on the host memory
     auto tmp1 = getFieldTmp<ColorSpinorField>(in.size(), param); // C_{m-1}(x)
     auto tmp2 = getFieldTmp<ColorSpinorField>(in.size(), param); // C_{m}(x)
     auto tmp3 = getFieldTmp<ColorSpinorField>(in.size(), param); // mat*C_{m}(x)
