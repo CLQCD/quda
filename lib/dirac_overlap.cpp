@@ -7,11 +7,11 @@ namespace quda
 {
   /**
    * Apply the overlap overlap
-   * out = a * x + D * in = a * x + 0.5 * (1 + \gamma_5 sign(\gamma_5 M)) * in
+   * out = m * x + (1 - m) * D * in = m * x + (1 - m) * 0.5 * (1 + \gamma_5 sign(\gamma_5 M)) * in
    * where M is the Wilson operator
    */
   void ApplyOverlap(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, const GaugeField &U,
-                    OverlapKernel &O, double a, cvector_ref<const ColorSpinorField> &x, int parity, bool dagger,
+                    OverlapKernel &O, double m, cvector_ref<const ColorSpinorField> &x, int parity, bool dagger,
                     const int *comm_override, TimeProfile &profile)
   {
     auto in_def = getFieldTmp(out);
@@ -28,13 +28,13 @@ namespace quda
     const double epsilon = O.epsilon;
 
     /**
-     * Apply 0.5 directly to the input
+     * Apply (1 - m) * 0.5 directly to the input
      */
     if (dagger) {
-      blas::axy(0.5, in, out);
+      blas::axy((1 - m) * 0.5, in, out);
       gamma5(in_def, out);
     } else {
-      blas::axy(0.5, in, in_def);
+      blas::axy((1 - m) * 0.5, in, in_def);
       gamma5(out, in_def);
     }
 
@@ -74,10 +74,10 @@ namespace quda
     }
     ApplyWilson(Mb1, b1, U, -O.kappa, b1, parity, false, comm_override, profile);
     if (dagger) { gamma5(Mb1, Mb1); }
-    if (a == 0.0) {
+    if (m == 0.0) {
       blas::axpbyz(1.0 / lambda_max, Mb1, 1.0, out, out);
     } else {
-      blas::axpbypczw(a, x, 1.0 / lambda_max, Mb1, 1.0, out, out);
+      blas::axpbypczw(m, x, 1.0 / lambda_max, Mb1, 1.0, out, out);
     }
   }
 
@@ -102,31 +102,31 @@ namespace quda
     ApplyOverlap(out, in, *gauge, *overlap_kernel, 0.0, in, parity, dagger, commDim.data, profile);
   }
 
+  // Defined as k * x + (1 - k) * D * in
   void DiracOverlap::DslashXpay(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
                                 QudaParity parity, cvector_ref<const ColorSpinorField> &x, double k) const
   {
     ApplyOverlap(out, in, *gauge, *overlap_kernel, k, x, parity, dagger, commDim.data, profile);
   }
 
-  // Defined as m / (1 - m) + D, and then multiplied by sqrt((1 - m) / (1 + m))
+  // Defined as m + (1 - m) D
   void DiracOverlap::M(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
-    DslashXpay(out, in, QUDA_INVALID_PARITY, in, mass / (1.0 - mass));
-    if (mass != 0.0) { blas::ax(sqrt((1.0 - mass) / (1.0 + mass)), out); }
+    DslashXpay(out, in, QUDA_INVALID_PARITY, in, mass);
   }
 
-  // Defined as m^2 / (1 - m^2) + DdagD
+  // Defined as m^2 + (1 - m^2) DdagD
   void DiracOverlap::MdagM(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) const
   {
     auto tmp = getFieldTmp(out);
     Dslash(tmp, in, QUDA_INVALID_PARITY);
     flipDagger();
-    DslashXpay(out, tmp, QUDA_INVALID_PARITY, in, (mass * mass) / (1.0 - mass * mass));
+    DslashXpay(out, tmp, QUDA_INVALID_PARITY, in, mass * mass);
     flipDagger();
   }
 
-  // Defined as m^2 / (1 - m^2) + D
-  // (1\pm\gamma_5)/2 DdagD (1\pm\gamma_5)/2 = (1\pm\gamma_5)/2 D (1\pm\gamma_5)/2
+  // Defined as m^2 + (1 - m^2) P DdagD P where P = (1 +- gamma_5) / 2
+  // For overlap dslash P DdagD P = P D P
   void DiracOverlap::MdagMChiral(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in,
                                  QudaChirality chirality) const
   {
@@ -139,7 +139,7 @@ namespace quda
     auto out_tmp = getFieldTmp<ColorSpinorField>(out.size(), param);
 
     for (size_t i = 0; i < in.size(); i++) { spinorChiralReconstruct(in_tmp[i], in[i], chirality); }
-    DslashXpay(out_tmp, in_tmp, QUDA_INVALID_PARITY, in_tmp, (mass * mass) / (1.0 - mass * mass));
+    DslashXpay(out_tmp, in_tmp, QUDA_INVALID_PARITY, in_tmp, mass * mass);
     for (size_t i = 0; i < out.size(); i++) { spinorChiralProject(out[i], out_tmp[i], chirality); }
   }
 
@@ -161,13 +161,13 @@ namespace quda
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) { return; }
 
     if (solType == QUDA_MAT_SOLUTION) {
-      // x = -1 / (1 - m) * b + 1 / (1 - m) * 1 / sqrt(1 - m^2) * x'
-      // x' = M^{-1} * b = (sqrt((1 - m) / (1 + m)) * (m / (1 - m) + D))^{-1} * b
-      blas::axpby(-1.0 / (1.0 - mass), b, 1.0 / (1.0 - mass) / sqrt(1.0 - mass * mass), x);
+      // x = -1 / (1 - m) * b + 1 / (1 - m) * x'
+      // x' = M^{-1} * b = (m + (1 - m) D)^{-1} * b
+      blas::axpby(-1.0 / (1.0 - mass), b, 1.0 / (1.0 - mass), x);
     } else if (solType == QUDA_MATDAG_MAT_SOLUTION) {
-      // x = -1 / (1 - m^2) * b + 1 / (1 - m^2) * 1 / (1 - m^2) * x'
-      // x' = (MdagM)^{-1} * b = (m^2 / (1 - m^2) + DdagD)^{-1} * b
-      blas::axpby(-1.0 / (1.0 - mass * mass), b, 1.0 / (1.0 - mass * mass) / (1.0 - mass * mass), x);
+      // x = -1 / (1 - m^2) * b + 1 / (1 - m^2) * x'
+      // x' = (MdagM)^{-1} * b = (m^2 + (1 - m^2) DdagD)^{-1} * b
+      blas::axpby(-1.0 / (1.0 - mass * mass), b, 1.0 / (1.0 - mass * mass), x);
     }
   }
 

@@ -98,6 +98,7 @@ namespace quda {
 
         auto &x0 = x[0];
         constexpr bool site_unroll_check = !std::is_same<store_t, y_store_t>::value || isFixed<store_t>::value;
+        // TODO: Is x0.Nspin() == 2 check needed here?
         if (site_unroll_check && (x0.Ncolor() != 3 && x0.Nspin() == 2))
           errorQuda("site unroll not supported for nSpin = %d nColor = %d", x0.Nspin(), x0.Ncolor());
 
@@ -114,7 +115,8 @@ namespace quda {
           constexpr bool site_unroll = !std::is_same<device_store_t, device_y_store_t>::value || isFixed<device_store_t>::value;
           constexpr int N = n_vector<device_store_t, true>(nSpin, site_unroll);
           constexpr int Ny = n_vector<device_y_store_t, true>(nSpin, site_unroll);
-          constexpr int M = site_unroll ? n_vector<device_store_t, false>(nSpin, true) : N; // real numbers per thread
+          // TODO: Shall we use n_vector<device_store_t, false>(nSpin, true) here?
+          constexpr int M = site_unroll ? (nSpin * 6) : N; // real numbers per thread
           const int length = x0.Length() / M;
 
           MultiReduceArg<device_real_t, M, NXZ, device_store_t, N, device_y_store_t, Ny, decltype(r_)> arg(x, y, z, w, r_, NYW, length, nParity);

@@ -276,29 +276,31 @@ namespace quda
     double b = eig_param->a_max;
     double delta = (b - a) / 2.0;
     double theta = (b + a) / 2.0;
+    // double lambda1 = 0.0;
     double lambda1 = eig_param->spectrum == QUDA_SPECTRUM_SR_EIG ? a : b;
     double sigma1 = delta / (lambda1 - theta);
-    double sigma_old = sigma1;
     double sigma;
     double d1 = sigma1 / delta;
     double d2 = -d1 * theta;
     double d3;
 
     ColorSpinorParam param(in[0]);
-    param.mem_type = QUDA_MEMORY_DEVICE; // FIXME: Hack for eigensolver in the host memory
-    auto z_old = getFieldTmp<ColorSpinorField>(in.size(), param);
-    auto z = getFieldTmp<ColorSpinorField>(in.size(), param);
-    auto Az = getFieldTmp<ColorSpinorField>(in.size(), param);
+    param.mem_type = QUDA_MEMORY_DEVICE; // FIXME: Hack for Ritz vectors on the host memory
+    auto tmp1 = getFieldTmp<ColorSpinorField>(in.size(), param); // C_{m-1}(x)
+    auto tmp2 = getFieldTmp<ColorSpinorField>(in.size(), param); // C_{m}(x)
+    auto tmp3 = getFieldTmp<ColorSpinorField>(in.size(), param); // mat*C_{m}(x)
 
     // out = d2 * in + d1 * out
     // C_1(x) = x
-    blas::copy(z, in);
-    mat(Az, z);
-    blas::axpbyz(d2, z, d1, Az, z_old);
-    std::swap(z_old, z);
+    blas::copy(tmp2, in);
+    mat(tmp3, tmp2);
+    blas::axpbyz(d2, tmp2, d1, tmp3, tmp1);
+    std::swap(tmp1, tmp2);
 
     // Using Chebyshev polynomial recursion relation,
     // C_{m+1}(x) = 2*x*C_{m} - C_{m-1}
+
+    double sigma_old = sigma1;
 
     // construct C_{m+1}(x)
     for (int i = 1; i < eig_param->poly_deg; i++) {
@@ -310,14 +312,15 @@ namespace quda
 
       // FIXME - we could introduce a fused mat + blas kernel here, eliminating one temporary
       // mat*C_{m}(x)
-      mat(Az, z);
-      blas::axpbypczw(d3, z_old, d2, z, d1, Az, z_old);
-      std::swap(z_old, z);
+      mat(tmp3, tmp2);
+
+      blas::axpbypczw(d3, tmp1, d2, tmp2, d1, tmp3, tmp1);
+      std::swap(tmp1, tmp2);
 
       sigma_old = sigma;
     }
 
-    blas::copy(out, z);
+    blas::copy(out, tmp2);
   }
 
   double EigenSolver::estimateChebyOpMax(ColorSpinorField &out, ColorSpinorField &in)

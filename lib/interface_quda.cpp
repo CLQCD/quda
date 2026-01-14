@@ -2898,7 +2898,10 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   // the correct QudaInvertParam values for the solve_type and
   // solution_type based on those three booleans
 
-  if (eig_param->use_pc) {
+  if (eig_param->chirality != QUDA_INVALID_CHIRALITY) {
+    inv_param->solve_type = QUDA_NORMOP_CHIRAL_SOLVE;
+    inv_param->solution_type = QUDA_MAT_SOLUTION;
+  } else if (eig_param->use_pc) {
     if (eig_param->use_norm_op)
       inv_param->solve_type = QUDA_NORMOP_PC_SOLVE;
     else
@@ -2906,10 +2909,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
     inv_param->solution_type = QUDA_MATPC_SOLUTION;
   } else {
     if (eig_param->use_norm_op)
-      if (eig_param->chirality == QUDA_INVALID_CHIRALITY)
-        inv_param->solve_type = QUDA_NORMOP_SOLVE;
-      else
-        inv_param->solve_type = QUDA_NORMOP_CHIRAL_SOLVE;
+      inv_param->solve_type = QUDA_NORMOP_SOLVE;
     else
       inv_param->solve_type = QUDA_DIRECT_SOLVE;
     inv_param->solution_type = QUDA_MAT_SOLUTION;
@@ -2941,7 +2941,7 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   Dirac *dEig = nullptr;
 
   // Create the dirac operator with a sloppy and a precon.
-  bool pc_solve = (inv_param->solve_type == QUDA_DIRECT_PC_SOLVE) || (inv_param->solve_type == QUDA_NORMOP_PC_SOLVE);
+  bool pc_solve = eig_param->use_pc;
   createDiracWithEig(d, dSloppy, dPre, dEig, *inv_param, pc_solve, eig_param->use_smeared_gauge);
   Dirac &dirac = *dEig;
   //------------------------------------------------------
@@ -3013,19 +3013,17 @@ void eigensolveQuda(void **host_evecs, double _Complex *host_evals, QudaEigParam
   // multiply by gamma5. Each combination requires a unique Dirac operator
   // object.
   DiracMatrix *m = nullptr;
-  if (!eig_param->use_norm_op && !eig_param->use_dagger && eig_param->compute_gamma5) {
+  if (eig_param->chirality == QUDA_INVALID_CHIRALITY) {
+    m = new DiracMdagMChiral(dirac);
+    ((DiracMdagMChiral *)m)->setChirality(eig_param->chirality);
+  } else if (!eig_param->use_norm_op && !eig_param->use_dagger && eig_param->compute_gamma5) {
     m = new DiracG5M(dirac);
   } else if (!eig_param->use_norm_op && !eig_param->use_dagger && !eig_param->compute_gamma5) {
     m = new DiracM(dirac);
   } else if (!eig_param->use_norm_op && eig_param->use_dagger) {
     m = new DiracMdag(dirac);
   } else if (eig_param->use_norm_op && !eig_param->use_dagger) {
-    if (eig_param->chirality == QUDA_INVALID_CHIRALITY) {
-      m = new DiracMdagM(dirac);
-    } else {
-      m = new DiracMdagMChiral(dirac);
-      ((DiracMdagMChiral *)m)->setChirality(eig_param->chirality);
-    }
+    m = new DiracMdagM(dirac);
   } else if (eig_param->use_norm_op && eig_param->use_dagger) {
     m = new DiracMMdag(dirac);
   } else {
@@ -3910,7 +3908,7 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
   bool pc_solve = (param->solve_type == QUDA_DIRECT_PC_SOLVE) || (param->solve_type == QUDA_NORMOP_PC_SOLVE);
   bool mat_solution = (param->solution_type == QUDA_MAT_SOLUTION) || (param->solution_type ==  QUDA_MATPC_SOLUTION);
   bool direct_solve = (param->solve_type == QUDA_DIRECT_SOLVE) || (param->solve_type == QUDA_DIRECT_PC_SOLVE);
-  bool chiral_solve = (param->solve_type == QUDA_NORMOP_CHIRAL_SOLVE);
+  bool chiral_solve = (param->solve_type == QUDA_NORMERR_CHIRAL_SOLVE);
 
   if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
       param->dslash_type == QUDA_STAGGERED_DSLASH) {
@@ -3923,9 +3921,22 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
       errorQuda("For Staggered-type fermions, multi-shift solver only supports DIRECT_PC solve types");
     }
 
+  } else if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
+
+    if (!chiral_solve) {
+      errorQuda("For Overlap fermions, multi-shift solver only support NORMERR_CHIRAL solve types");
+    }
+    if (direct_solve) {
+      errorQuda("For Overlap fermions, multi-shift solver does not support DIRECT or DIRECT_PC solve types");
+    }
+    if (pc_solution || pc_solve) {
+      errorQuda(
+        "For Overlap fermions, multi-shift solver does not support preconditioned (PC) solution_type or solve_type");
+    }
+
   } else { // Wilson type
 
-    if (mat_solution && !chiral_solve) {
+    if (mat_solution) {
       errorQuda("For Wilson-type fermions, multi-shift solver does not support MAT or MATPC solution types");
     }
     if (direct_solve) {
@@ -3963,6 +3974,11 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
       param->dslash_type == QUDA_STAGGERED_DSLASH){
     param->mass = sqrt(param->offset[0]/4);
   }
+
+  // We solve m / (1 - m) + D in multi-shift solver
+  // But we actually use m + (1 - m) D as DiracOverlap::M()
+  // so mass = 0 here to get a D without any shift
+  if (param->dslash_type == QUDA_OVERLAP_DSLASH) { param->mass = 0.0; }
 
   Dirac *d = nullptr;
   Dirac *dSloppy = nullptr;
@@ -4133,11 +4149,6 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
           diracSloppy.setMass(sqrt(param->offset[i]/4));
         }
 
-        if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
-          dirac.setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
-          diracSloppy.setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
-        }
-
         DiracMatrix *m, *mSloppy;
 
         if (param->dslash_type == QUDA_ASQTAD_DSLASH ||
@@ -4153,8 +4164,7 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
         }
 
         // need to curry in the shift if we are not doing staggered
-        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH
-            && param->dslash_type != QUDA_OVERLAP_DSLASH) {
+        if (param->dslash_type != QUDA_ASQTAD_DSLASH && param->dslash_type != QUDA_STAGGERED_DSLASH) {
           m->shift = param->offset[i];
           mSloppy->shift = param->offset[i];
         }
@@ -4224,11 +4234,6 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
           diracSloppy.setMass(sqrt(param->offset[0]/4)); // restore just in case
         }
 
-        if (param->dslash_type == QUDA_OVERLAP_DSLASH) {
-          dirac.setMass(sqrt(param->offset[0] / (param->offset[0] + 1.0)));
-          diracSloppy.setMass(sqrt(param->offset[0] / (param->offset[0] + 1.0)));
-        }
-
         delete m;
         delete mSloppy;
       }
@@ -4237,12 +4242,18 @@ void invertMultiShiftQuda(void **hp_x, void *hp_b, QudaInvertParam *param)
 
   if (chiral_solve) { combineChiral(x_left, x_right, x); }
 
-  if (chiral_solve) {
+  // We have to reconstruct the solution for overlap fermions
+  if (param->dslash_type==QUDA_OVERLAP_DSLASH) {
     auto tmp = getFieldTmp(x[0]);
     for (int i = 0; i < param->num_offset; i++) {
-      d->setMass(sqrt(param->offset[i] / (param->offset[i] + 1.0)));
-      blas::copy(tmp, x[i]);
-      d->Mdag(x[i], tmp);
+      double mass = sqrt(param->offset[i] / (param->offset[i] + 1.0))
+      // (m^2 / (1 - m^2) + D)^{-1} ==> (m^2 + (1 - m^2) D)^{-1}
+      blas::ax(1 / (1 - mass * mass), x[i]);
+      d->setMass(mass);
+      if (mat_solution) {
+        blas::copy(tmp, x[i])
+        d->Mdag(x[i], tmp);
+      }
       d->reconstruct(x[i], b, param->solution_type);
     }
   }

@@ -10,7 +10,7 @@ namespace quda
   {
     getProfile().TPSTART(QUDA_PROFILE_INIT);
     if (pool && (type != QUDA_MEMORY_DEVICE && type != QUDA_MEMORY_HOST_PINNED && type != QUDA_MEMORY_HOST))
-      errorQuda("Memory pool not available for memory type %d", type);
+      warningQuda("Memory pool not available for memory type %d", type);
 
     if (size > 0) {
       switch (type) {
@@ -46,7 +46,7 @@ namespace quda
       device = nullptr;
       host = ptr;
       break;
-    case QUDA_MEMORY_MAPPED:
+    case QUDA_MEMORY_MAPPED: // TODO: Is this needed here?
       host = ptr;
       device = get_mapped_device_pointer(ptr);
       break;
@@ -82,7 +82,7 @@ namespace quda
       case QUDA_MEMORY_HOST: host_free(host); break;
       case QUDA_MEMORY_HOST_PINNED: pool ? pool_pinned_free(host) : host_free(host); break;
       case QUDA_MEMORY_MAPPED: host_free(host); break;
-      case QUDA_MEMORY_MANAGED: managed_free(host); break;
+      case QUDA_MEMORY_MANAGED: managed_free(host); break; // TODO: Is this needed here?
       default: errorQuda("Unknown memory type %d", type);
       }
       getProfile().TPSTOP(QUDA_PROFILE_FREE);

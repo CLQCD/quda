@@ -35,13 +35,12 @@ namespace quda
 
     // overlap dslash uses mass normalization internally
     if (param.dslash_type == QUDA_OVERLAP_DSLASH) {
-      const double two_rho = 8.0 - 1.0 / kappa;
       switch (param.solution_type) {
       case QUDA_MAT_SOLUTION:
-        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(1.0 / two_rho, b);
+        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(param.mass, b);
         break;
       case QUDA_MATDAG_MAT_SOLUTION:
-        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(1.0 / (two_rho * two_rho), b);
+        if (param.mass_normalization == QUDA_KAPPA_NORMALIZATION) blas::ax(param.mass * param.mass, b);
         break;
       default: errorQuda("Not implemented");
       }
@@ -189,7 +188,7 @@ namespace quda
     bool direct_solve = (param.solve_type == QUDA_DIRECT_SOLVE) || (param.solve_type == QUDA_DIRECT_PC_SOLVE);
     bool norm_error_solve = (param.solve_type == QUDA_NORMERR_SOLVE) || (param.solve_type == QUDA_NORMERR_PC_SOLVE)
       || (param.solve_type == QUDA_NORMERR_CHIRAL_SOLVE);
-    bool chiral_solve = (param.solve_type == QUDA_NORMOP_CHIRAL_SOLVE);
+    bool chiral_solve = (param.solve_type == QUDA_NORMERR_CHIRAL_SOLVE);
 
     auto nb = blas::norm2(b);
     for (auto &bi : nb) {
@@ -244,6 +243,8 @@ namespace quda
     // MAT              NORMOP        Solve (A^dag A) x = (A^dag b)
     // MATDAG_MAT       NORMOP        Solve (A^dag A) x = b
     // MAT              NORMERR       Solve (A A^dag) y = b, then x = A^dag y
+    // MAT              CHIRAL        Solve (A A^dag) y = b on both chrialities, then x = A^dag y
+    // MATDAG_MAT       CHIRAL        Solve (A A^dag) x = b on both chrialities
     //
     // We generally require that the solution_type and solve_type
     // preconditioning match.  As an exception, the unpreconditioned MAT
@@ -269,7 +270,7 @@ namespace quda
       solverParam.updateInvertParam(param);
     }
 
-    if (chiral_solve && !direct_solve) {
+    if (chiral_solve) { // (A A^dag) y = b or (A A^dag) x = b on both chiralities
       DiracMdagMChiral m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
       SolverParam solverParam(param);
 
@@ -279,7 +280,6 @@ namespace quda
       auto out_left = getFieldTmp<ColorSpinorField>(in_left);
       auto out_right = getFieldTmp<ColorSpinorField>(in_right);
 
-      // high-mode inversion for chiral overlap fermion
       for (QudaChirality chirality : {QUDA_LEFT_CHIRALITY, QUDA_RIGHT_CHIRALITY}) {
         auto &in_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? in_left : in_right;
         auto &out_chiral = (chirality == QUDA_LEFT_CHIRALITY) ? out_left : out_right;
@@ -295,12 +295,12 @@ namespace quda
         }
       }
       combineChiral(idx_left, out_left, idx_right, out_right, out);
-      if (mat_solution) {
+      if (mat_solution) { // then x = A^dag y
         auto tmp = getFieldTmp<ColorSpinorField>(out);
         blas::copy(tmp, out);
         dirac.Mdag(out, tmp);
       }
-    } else if (direct_solve) {
+    } else if (direct_solve) { // A x = b, or A x = y where A^dag y = b
       DiracM m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
       SolverParam solverParam(param);
 
@@ -315,7 +315,7 @@ namespace quda
       (*solve)(out, in);
       delete solve;
       solverParam.updateInvertParam(param);
-    } else if (!norm_error_solve) {
+    } else if (!norm_error_solve) { // (A^dag A) x = b, or (A^dag A) x = b' where b' = A^dag b
       DiracMdagM m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
       SolverParam solverParam(param);
 
@@ -339,7 +339,7 @@ namespace quda
         delete solve;
         solverParam.updateInvertParam(param);
       }
-    } else { // norm_error_solve
+    } else { // (A A^dag) y = b, then x = A^dag y
       DiracMMdag m(dirac), mSloppy(diracSloppy), mPre(diracPre), mEig(diracEig);
       auto tmp = getFieldTmp(cvector_ref<ColorSpinorField>(in));
       SolverParam solverParam(param);

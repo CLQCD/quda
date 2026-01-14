@@ -88,37 +88,48 @@ namespace quda
 
   std::vector<double> minimaxApproximationRemez(double delta, double epsilon)
   {
-    const int n = ceil(-log(delta / 0.41) / (2.083 * sqrt(epsilon))) + 1;
+    const int n_ref = ceil(-log(delta / 0.41) / (2.083 * sqrt(epsilon))) + 1;
+    bool converged = false;
     constexpr int max_iter = 5;
-    std::vector<double> y(n + 1), z(n + 1), c(n + 1), b(n + 1);
-    Eigen::Map<Eigen::VectorXd> b_eigen(b.data(), b.size()), c_eigen(c.data(), c.size());
-    Eigen::MatrixXd M_eigen(n + 1, n + 1);
+    std::vector<double> y, z, c, b;
+    for (int n = n_ref; n < n_ref * 1.1; n++) {
+      y.resize(n + 1);
+      z.resize(n + 1);
+      c.resize(n + 1);
+      b.resize(n + 1);
+      Eigen::Map<Eigen::VectorXd> b_eigen(b.data(), b.size()), c_eigen(c.data(), c.size());
+      Eigen::MatrixXd M_eigen(n + 1, n + 1);
 
-    for (int i = 0; i < n + 1; ++i) {
-      z[i] = cos(M_PI * i / n);
-      y[i] = (z[i] * (1 - epsilon) + (1 + epsilon)) / 2;
-    }
-
-    int iter = 0;
-    while (iter < max_iter) {
-      // Construct matrix M_ij=\sqrt{y_i}T_j(z_i)
       for (int i = 0; i < n + 1; ++i) {
-        for (int j = 0; j < n; ++j) { M_eigen(i, j) = sqrt(y[i]) * Tn(z[i], j); }
-        M_eigen(i, n) = i % 2 == 0 ? 1 : -1; // T_n is not a real Chebyshev polynomial
-        b_eigen(i) = 1.0;
+        z[i] = cos(M_PI * i / n);
+        y[i] = (z[i] * (1 - epsilon) + (1 + epsilon)) / 2;
       }
-      c_eigen = M_eigen.lu().solve(b_eigen);
 
-      // Drop T_n
-      for (int i = 0; i < n; ++i) { b[i] = findRoot(y[i], y[i + 1], c, n - 1, epsilon, false); }
-      for (int i = n - 1; i > 0; --i) { y[i] = findRoot(b[i], b[i - 1], c, n - 1, epsilon, true); }
-      for (int i = 1; i < n; ++i) { z[i] = (2 * y[i] - (1 + epsilon)) / (1 - epsilon); }
-      for (int i = 0; i < n + 1; ++i) { b[i] = abs(1 - sqrt(y[i]) * ciTi(z[i], c, n - 1)); }
-      if (*std::max_element(b.begin(), b.end()) <= delta) { break; }
-      iter += 1;
+      int iter = 0;
+      while (iter < max_iter) {
+        // Construct matrix M_ij=\sqrt{y_i}T_j(z_i)
+        for (int i = 0; i < n + 1; ++i) {
+          for (int j = 0; j < n; ++j) { M_eigen(i, j) = sqrt(y[i]) * Tn(z[i], j); }
+          M_eigen(i, n) = i % 2 == 0 ? 1 : -1; // T_n is not a real Chebyshev polynomial
+          b_eigen(i) = 1.0;
+        }
+        c_eigen = M_eigen.lu().solve(b_eigen);
+
+        // Drop T_n
+        for (int i = 0; i < n; ++i) { b[i] = findRoot(y[i], y[i + 1], c, n - 1, epsilon, false); }
+        for (int i = n - 1; i > 0; --i) { y[i] = findRoot(b[i], b[i - 1], c, n - 1, epsilon, true); }
+        for (int i = 1; i < n; ++i) { z[i] = (2 * y[i] - (1 + epsilon)) / (1 - epsilon); }
+        for (int i = 0; i < n + 1; ++i) { b[i] = abs(1 - sqrt(y[i]) * ciTi(z[i], c, n - 1)); }
+        if (*std::max_element(b.begin(), b.end()) <= delta) { break; }
+        iter += 1;
+      }
+      if (iter < max_iter) {
+        converged = true;
+        break;
+      }
     }
-    if (iter == max_iter) { errorQuda("minimaxApproximationRemez can not converge"); }
-    return {c.begin(), c.begin() + n};
+    if (!converged) errorQuda("Remez algorithm did not converge\n");
+    return {c.begin(), c.end() - 1};
   }
 
   OverlapKernel::OverlapKernel(std::vector<ColorSpinorField> &evecs, const std::vector<Complex> &evals, double kappa,

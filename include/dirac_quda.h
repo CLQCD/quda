@@ -2685,7 +2685,7 @@ public:
     int getStencilSteps() const override
     {
       if (dirac->getDiracType() == QUDA_OVERLAP_DIRAC) {
-        return dirac->getStencilSteps();
+        return dirac->getStencilSteps(); // P M^dag M P == P M P for overlap chiral fermion
       } else {
         return dirac->getStencilSteps() * 2; // 2 for M and M dagger
       }
