@@ -7,8 +7,10 @@ namespace quda
 {
   /**
    * Apply the overlap overlap
-   * out = m * x + (1 - m) * D * in = m * x + (1 - m) * 0.5 * (1 + \gamma_5 sign(\gamma_5 M)) * in
-   * where M is the Wilson operator
+   * out = D * in
+   * If m is not zero, then
+   * out = m * x + (1 - m) * D * in
+   * D is defined as 0.5 * (1 + \gamma_5 sign(\gamma_5 M)) where M is the Wilson operator
    */
   void ApplyOverlap(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in, const GaugeField &U,
                     OverlapKernel &O, double m, cvector_ref<const ColorSpinorField> &x, int parity, bool dagger,
@@ -161,10 +163,12 @@ namespace quda
     if (solType == QUDA_MATPC_SOLUTION || solType == QUDA_MATPCDAG_MATPC_SOLUTION) { return; }
 
     if (solType == QUDA_MAT_SOLUTION) {
+      // We actually apply (1 - D) x'
       // x = -1 / (1 - m) * b + 1 / (1 - m) * x'
       // x' = M^{-1} * b = (m + (1 - m) D)^{-1} * b
       blas::axpby(-1.0 / (1.0 - mass), b, 1.0 / (1.0 - mass), x);
     } else if (solType == QUDA_MATDAG_MAT_SOLUTION) {
+      // We actually apply (1 - DdagD) x'
       // x = -1 / (1 - m^2) * b + 1 / (1 - m^2) * x'
       // x' = (MdagM)^{-1} * b = (m^2 + (1 - m^2) DdagD)^{-1} * b
       blas::axpby(-1.0 / (1.0 - mass * mass), b, 1.0 / (1.0 - mass * mass), x);

@@ -1,3 +1,4 @@
+#include <numeric>
 #include <eigen_helper.h>
 #include <overlap_kernel.h>
 
@@ -154,12 +155,26 @@ namespace quda
     kappa(overlap_kernel->kappa),
     epsilon(overlap_kernel->epsilon),
     remez_tol(overlap_kernel->remez_tol),
-    remez_coeff(overlap_kernel->remez_coeff),
-    remez_order(overlap_kernel->remez_order)
+    remez_coeff(overlap_kernel->remez_tol.size()),
+    remez_order(overlap_kernel->remez_tol.size())
   {
     ColorSpinorParam param(overlap_kernel->evecs[0]);
     param.setPrecision(precision, precision, true);
     evecs.resize(overlap_kernel->evecs.size(), ColorSpinorField(param));
     for (size_t i = 0; i < overlap_kernel->evecs.size(); i++) { evecs[i].copy(overlap_kernel->evecs[i]); }
+    double prec_tol;
+    switch (precision) {
+    case QUDA_DOUBLE_PRECISION: prec_tol = std::numeric_limits<double>::epsilon() / 2.; break;
+    case QUDA_SINGLE_PRECISION: prec_tol = std::numeric_limits<float>::epsilon() / 2.; break;
+    case QUDA_HALF_PRECISION: prec_tol = pow(2., -16); break;
+    case QUDA_QUARTER_PRECISION: prec_tol = pow(2., -8); break;
+    default: errorQuda("Invalid precision %d", precision); break;
+    }
+    for (size_t i = 0; i < remez_tol.size(); i++) {
+      double tol = std::max(remez_tol[i], prec_tol);
+      remez_tol[i] = tol;
+      remez_coeff[i] = minimaxApproximationRemez(tol, epsilon);
+      remez_order[i] = remez_coeff[i].size() - 1;
+    }
   }
 } // namespace quda
