@@ -778,6 +778,52 @@ namespace quda {
     void hqsolve(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in);
   };
 
+  /**
+     @brief  Conjugate-Gradient Solver.
+   */
+  class BlockCG : public Solver {
+
+  private:
+    std::vector<ColorSpinorField> y;
+    std::vector<ColorSpinorField> r;
+    std::vector<ColorSpinorField> rnew;
+    std::vector<ColorSpinorField> p;
+    std::vector<ColorSpinorField> Ap;
+    std::vector<ColorSpinorField> r_sloppy;
+    std::vector<ColorSpinorField> x_sloppy;
+    bool init = false;
+
+    /**
+       @brief Initiate the fields needed by the solver
+       @param[in] x Solution vector
+       @param[in] b Source vector
+    */
+    void create(cvector_ref<ColorSpinorField> &x, cvector_ref<const ColorSpinorField> &b);
+
+  public:
+    BlockCG(const DiracMatrix &mat, const DiracMatrix &matSloppy, const DiracMatrix &matPrecon, const DiracMatrix &matEig,
+       SolverParam &param);
+    virtual ~BlockCG();
+
+    /**
+     * @brief Run CG.
+     * @param out Solution vector.
+     * @param in Right-hand side.
+     */
+    void operator()(cvector_ref<ColorSpinorField> &out, cvector_ref<const ColorSpinorField> &in) override;
+
+    void blocksolve(ColorSpinorField &out, ColorSpinorField &in) override;
+
+    /**
+       @return Return the residual vector from the prior solve
+    */
+    cvector_ref<const ColorSpinorField> get_residual() override;
+
+    virtual bool hermitian() const override { return true; } /** CG is only for Hermitian systems */
+
+    virtual QudaInverterType getInverterType() const override { return QUDA_BLOCK_CG_INVERTER; }
+  };
+
   class CGNE : public Solver
   {
 

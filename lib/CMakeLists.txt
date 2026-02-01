@@ -25,7 +25,7 @@ set (QUDA_OBJS
   vector_io.cpp eigensolve_quda.cpp quda_arpack_interface.cpp
   multigrid.cpp transfer.cpp block_orthogonalize.cpp
   prolongator.cpp restrictor.cpp staggered_prolong_restrict.cu
-  gauge_phase.cu timer.cpp
+  gauge_phase.cu timer.cpp inv_block_cg_quda.cpp
   solver.cpp inv_bicgstab_quda.cpp inv_cg_quda.cpp inv_bicgstabl_quda.cpp
   inv_multi_cg_quda.cpp inv_eigcg_quda.cpp gauge_ape.cu
   gauge_stout.cu gauge_hyp.cu gauge_wilson_flow.cu gauge_plaq.cu gauge_plaqrect.cu

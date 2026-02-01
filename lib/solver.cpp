@@ -154,6 +154,10 @@ namespace quda {
       report("CG3NR");
       solver = new CGNR(mat, matSloppy, matPrecon, matEig, param);
       break;
+    case QUDA_BLOCK_CG_INVERTER:
+      report("BLOCK-CG");
+      solver = new BlockCG(mat, matSloppy, matPrecon, matEig, param);
+      break;
     default:
       errorQuda("Invalid solver type %d", param.inv_type);
     }
