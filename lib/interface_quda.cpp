@@ -107,6 +107,7 @@ CloverField *cloverRefinement = nullptr;
 CloverField *cloverEigensolver = nullptr;
 
 GaugeField momResident;
+GaugeField forceResident;
 GaugeField *extendedGaugeResident = nullptr;
 
 /**
@@ -1520,6 +1521,7 @@ void endQuda(void)
 
     solutionResident.clear();
     momResident = GaugeField();
+    forceResident = GaugeField();
 
     LatticeField::freeGhostBuffer();
     ColorSpinorField::freeGhostBuffer();
@@ -4283,6 +4285,41 @@ void momResidentQuda(void *mom, QudaGaugeParam *param)
   }
 }
 
+void forceResidentQuda(void *force, QudaGaugeParam *param)
+{
+  auto profile = pushProfile(profileGaugeForce);
+  checkGaugeParam(param);
+
+  GaugeFieldParam gParamForce(*param, force, QUDA_ASQTAD_GENERAL_LINKS);
+  gParamForce.location = QUDA_CPU_FIELD_LOCATION;
+
+  GaugeField cpuForce(gParamForce);
+
+  if (param->make_resident_force && !param->return_result_force) {
+    gParamForce.location = QUDA_CUDA_FIELD_LOCATION;
+    gParamForce.create = QUDA_NULL_FIELD_CREATE;
+    gParamForce.reconstruct = QUDA_RECONSTRUCT_NO;
+    gParamForce.link_type = QUDA_ASQTAD_GENERAL_LINKS;
+    gParamForce.setPrecision(param->cuda_prec, true);
+    gParamForce.create = QUDA_ZERO_FIELD_CREATE;
+    forceResident = GaugeField(gParamForce);
+  } else if (param->return_result_force && !param->make_resident_force) {
+    if (forceResident.empty()) errorQuda("No resident force to return");
+  } else {
+    errorQuda("Unexpected combination make_resident_force = %d return_result_force = %d", param->make_resident_force,
+              param->return_result_force);
+  }
+
+  if (param->make_resident_force) {
+    // we are downloading the force from the host
+    forceResident.copy(cpuForce);
+  } else if (param->return_result_force) {
+    // we are uploading the force to the host
+    cpuForce.copy(forceResident);
+    forceResident = GaugeField();
+  }
+}
+
 void createCloverQuda(QudaInvertParam* invertParam)
 {
   auto profile = pushProfile(profileClover);
@@ -4779,6 +4816,80 @@ void computeHISQForceQuda(void* const milc_momentum,
     momResident = GaugeField();
 }
 
+void computeCloverForceV2Quda(void *h_force, double dt, void **h_x, void **, double *coeff, double kappa2, double ck,
+                            int nvector, double multiplicity, void *, QudaGaugeParam *gauge_param,
+                            QudaInvertParam *inv_param)
+{
+  using namespace quda;
+  auto profile = pushProfile(profileCloverForce, inv_param);
+
+  checkGaugeParam(gauge_param);
+  if (!gaugePrecise) errorQuda("No resident gauge field");
+  if (!cloverPrecise) errorQuda("No resident clover field");
+
+  GaugeFieldParam fParam(*gauge_param, h_force, QUDA_ASQTAD_GENERAL_LINKS);
+  // create the host momentum field
+  GaugeField cpuForce = !gauge_param->use_resident_force ? GaugeField(fParam) : GaugeField();
+
+  // create the device momentum field
+  fParam.location = QUDA_CUDA_FIELD_LOCATION;
+  fParam.create = gauge_param->overwrite_force ? QUDA_ZERO_FIELD_CREATE : QUDA_COPY_FIELD_CREATE;
+  fParam.field = &cpuForce;
+  fParam.reconstruct = QUDA_RECONSTRUCT_NO;
+  fParam.setPrecision(gauge_param->cuda_prec, true);
+
+  if (gauge_param->use_resident_force && !forceResident.Length()) errorQuda("No resident momentum field to use");
+  GaugeField cudaForce = gauge_param->use_resident_force ? forceResident.create_alias() : GaugeField(fParam);
+  if (gauge_param->use_resident_force && gauge_param->overwrite_force) cudaForce.zero();
+
+  if (inv_param->solution_type != QUDA_MATPCDAG_MATPC_SOLUTION)
+    errorQuda("Force computation only supports solution to MatPCDagMatPC");
+  ColorSpinorParam qParam(nullptr, *inv_param, fParam.x, false, QUDA_CUDA_FIELD_LOCATION);
+  qParam.setPrecision(fParam.Precision(), fParam.Precision(), true);
+  qParam.create = QUDA_NULL_FIELD_CREATE;
+  qParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+
+  std::vector<ColorSpinorField> x(nvector), x0(nvector);
+  std::vector<double> force_coeff(nvector);
+  std::vector<array<double, 2>> ferm_epsilon(nvector);
+
+  QudaParity parity = inv_param->matpc_type == QUDA_MATPC_EVEN_EVEN_ASYMMETRIC ? QUDA_EVEN_PARITY : QUDA_ODD_PARITY;
+
+  for (int i = 0; i < nvector; i++) {
+    x[i] = ColorSpinorField(qParam);
+
+    if (!inv_param->use_resident_solution) {
+      ColorSpinorParam cpuParam(h_x[i], *inv_param, fParam.x, true, inv_param->input_location);
+      ColorSpinorField cpuQuarkX(cpuParam);
+      x[i][parity] = cpuQuarkX;
+    } else {
+      x[i][parity] = solutionResident[i];
+    }
+
+    force_coeff[i] = -2.0 * coeff[i] * kappa2;
+    ferm_epsilon[i] = {-2.0 * ck * coeff[i], kappa2 * 2.0 * ck * coeff[i]};
+  }
+
+  if (inv_param->use_resident_solution && solutionResident.size() < (unsigned int)nvector)
+    errorQuda("solutionResident.size() %lu does not match number of shifts %d", solutionResident.size(), nvector);
+
+  // Make sure extendedGaugeResident has the correct R
+  lat_dim_t R;
+  for (int d = 0; d < 4; d++) R[d] = (d == 0 ? 2 : 1) * (redundant_comms || commDimPartitioned(d));
+  updateExtendedGaugeResident(false, R, profileCloverForce);
+  GaugeField &gaugeEx = *extendedGaugeResident;
+
+  computeCloverForce(cudaForce, gaugeEx, *gaugePrecise, *cloverPrecise, x, x0, force_coeff, ferm_epsilon,
+                     -2.0 * ck * multiplicity, false, *inv_param);
+
+  // copy the outer product field back to the host
+  if (gauge_param->return_result_force) cpuForce.copy(cudaForce);
+  if (gauge_param->make_resident_force && gauge_param->use_resident_force)
+    std::exchange(forceResident, cudaForce);
+  else if (!gauge_param->make_resident_force)
+    forceResident = GaugeField();
+}
+
 void computeCloverForceQuda(void *h_mom, double dt, void **h_x, void **, double *coeff, double kappa2, double ck,
                             int nvector, double multiplicity, void *, QudaGaugeParam *gauge_param,
                             QudaInvertParam *inv_param)
@@ -4842,8 +4953,16 @@ void computeCloverForceQuda(void *h_mom, double dt, void **h_x, void **, double 
   updateExtendedGaugeResident(false, R, profileCloverForce);
   GaugeField &gaugeEx = *extendedGaugeResident;
 
-  computeCloverForce(cudaMom, gaugeEx, *gaugePrecise, *cloverPrecise, x, x0, force_coeff, ferm_epsilon,
+  GaugeFieldParam param(cudaMom);
+  param.link_type = QUDA_GENERAL_LINKS;
+  param.reconstruct = QUDA_RECONSTRUCT_NO;
+  param.create = QUDA_ZERO_FIELD_CREATE;
+  param.setPrecision(param.Precision(), true);
+  GaugeField force(param);
+
+  computeCloverForce(force, gaugeEx, *gaugePrecise, *cloverPrecise, x, x0, force_coeff, ferm_epsilon,
                      2.0 * ck * multiplicity * dt, false, *inv_param);
+  updateMomentum(cudaMom, -1.0, *gaugePrecise, force, "clover");
 
   // copy the outer product field back to the host
   if (gauge_param->return_result_mom) cpuMom.copy(cudaMom);

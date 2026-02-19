@@ -8,7 +8,7 @@
 namespace quda
 {
 
-  void computeCloverForce(GaugeField &mom, const GaugeField &gaugeEx, const GaugeField &gauge,
+  void computeCloverForce(GaugeField &force, const GaugeField &gaugeEx, const GaugeField &gauge,
                           const CloverField &clover, cvector_ref<ColorSpinorField> &x, cvector_ref<ColorSpinorField> &x0,
                           const std::vector<double> &coeff, const std::vector<array<double, 2>> &epsilon,
                           double sigma_coeff, bool detratio, QudaInvertParam &inv_param)
@@ -32,12 +32,8 @@ namespace quda
     auto p = vector_ref<ColorSpinorField>(p_);
 
     // create oprod and trace field
-    GaugeFieldParam param(mom);
-    param.link_type = QUDA_GENERAL_LINKS;
-    param.reconstruct = QUDA_RECONSTRUCT_NO;
+    GaugeFieldParam param(force);
     param.create = QUDA_ZERO_FIELD_CREATE;
-    param.setPrecision(param.Precision(), true);
-    GaugeField force(param);
     param.geometry = QUDA_TENSOR_GEOMETRY;
     GaugeField oprod(param);
 
@@ -98,8 +94,6 @@ namespace quda
     // oprod = (A12) of hep-lat/0112051
     // compute the insertion of oprod in Fig.27 of hep-lat/0112051
     cloverDerivative(force, gaugeEx, oprod, 1.0);
-
-    updateMomentum(mom, -1.0, gauge, force, "clover");
 
     getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
 
