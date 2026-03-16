@@ -1259,6 +1259,8 @@ void loadOverlapQuda(QudaInvertParam *inv_param, QudaEigParam *eig_param)
   eig_param_g5w.max_restarts = eig_param->max_restarts;
   strcpy(eig_param_g5w.vec_infile, eig_param->vec_infile);
   strcpy(eig_param_g5w.vec_outfile, eig_param->vec_outfile);
+  strcpy(eig_param_g5w.chk_infile, eig_param->chk_infile);
+  strcpy(eig_param_g5w.chk_outfile, eig_param->chk_outfile);
 
   DiracParam diracParam;
   setDiracParam(diracParam, inv_param, false);

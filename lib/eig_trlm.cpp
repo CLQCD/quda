@@ -12,7 +12,8 @@
 #include <blas_quda.h>
 #include <util_quda.h>
 #include <tune_quda.h>
-#include <eigen_helper.h>
+
+#include <eigen_checkpoint.h>
 
 namespace quda
 {
@@ -66,6 +67,22 @@ namespace quda
     double mat_norm = 0.0;
     double epsilon = setEpsilon(kSpace[0].Precision());
 
+    int current_slot = -1;
+    int k_step_load = -1;
+    if (strcmp(eig_param->chk_infile, "") != 0) {
+      if (loadTRLMCheckpoint(eig_param->chk_infile, kSpace, alpha, beta, restart_iter, 
+                             iter, num_locked, num_converged, num_keep, n_kr, k_step_load, current_slot)) {
+         
+         for (int i = num_locked; i < n_kr; i++) {
+           if (fabs(alpha[i]) > mat_norm) mat_norm = fabs(alpha[i]);
+         }
+         
+         int dim = n_kr - num_locked;
+         ritz_mat.resize(dim * dim, 0.0);
+      }
+
+    }
+
     // Print Eigensolver params
     printEigensolverSetup();
     //---------------------------------------------------------------------------
@@ -77,8 +94,30 @@ namespace quda
     // Loop over restart iterations.
     while (restart_iter < max_restarts && !converged) {
 
-      for (int step = num_keep; step < n_kr; step++) lanczosStep(kSpace, step);
-      iter += (n_kr - num_keep);
+      int step_start;
+      if (k_step_load != -1) {
+          step_start = k_step_load;
+          k_step_load = -1;
+          logQuda(QUDA_VERBOSE, "Resuming Lanczos loop from step %d\n", step_start);
+      } else {
+          step_start = num_keep;
+      }
+
+      for (int step = step_start; step < n_kr; step++) {
+          
+          lanczosStep(kSpace, step);
+          iter++;
+
+          getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
+          if (eig_param->chk_save_interval > 0 && iter % eig_param->chk_save_interval == 0 && step < n_kr - 1) {
+             if (strcmp(eig_param->chk_outfile, "") != 0) {
+                saveTRLMCheckpoint(eig_param->chk_outfile, kSpace, alpha, beta, 
+                                   restart_iter, iter, num_locked, 
+                                   num_converged, num_keep, n_kr, step + 1, current_slot, eig_param->chk_save_interval);
+             }
+          }
+          getProfile().TPSTART(QUDA_PROFILE_COMPUTE);
+      }
 
       // The eigenvalues are returned in the alpha array
       getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
@@ -151,6 +190,14 @@ namespace quda
         reorder(kSpace);
         converged = true;
       }
+
+      getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
+      if (strcmp(eig_param->chk_outfile, "") != 0) {
+        saveTRLMCheckpoint(eig_param->chk_outfile, kSpace, alpha, beta, 
+                            restart_iter + 1, iter, num_locked, 
+                            num_converged, num_keep, n_kr, num_keep, current_slot, eig_param->chk_save_interval);
+      }
+      getProfile().TPSTART(QUDA_PROFILE_COMPUTE);
 
       restart_iter++;
     }

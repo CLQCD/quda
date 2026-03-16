@@ -616,6 +616,15 @@ extern "C" {
     /** Filename prefix for where to save the null-space vectors */
     char vec_outfile[256];
 
+    /** Checkpoint file save interbal */
+    int chk_save_interval;
+
+    /** Filename prefix where to load the TRLM checkpoint */
+    char chk_infile[256];
+
+    /** Filename prefix for where to save the TRLM checkpoint */
+    char chk_outfile[256];
+
     /** The precision with which to save the vectors */
     QudaPrecision save_prec;
 

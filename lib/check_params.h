@@ -202,6 +202,9 @@ void printQudaEigParam(QudaEigParam *param) {
   P(compute_evals_batch_size, 4);
   P(ortho_block_size, 0);
   P(partfile, QUDA_BOOLEAN_FALSE);
+  P(chk_infile[0], '\0');
+  P(chk_outfile[0], '\0');
+  P(chk_save_interval, 0);
 #else
   P(use_eigen_qr, QUDA_BOOLEAN_INVALID);
   P(use_poly_acc, QUDA_BOOLEAN_INVALID);

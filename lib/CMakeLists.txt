@@ -20,7 +20,7 @@ set (QUDA_OBJS
   solve.cpp monitor.cpp dirac_coarse.cpp dslash_coarse.cpp
   coarse_op.cpp coarsecoarse_op.cpp
   coarse_op_preconditioned.cpp staggered_coarse_op.cpp
-  eig_iram.cpp eig_trlm.cpp eig_block_trlm.cpp
+  eig_iram.cpp eig_trlm.cpp eig_block_trlm.cpp eigen_checkpoint.cpp
   eig_trlm_3d.cpp blas_3d.cu
   vector_io.cpp eigensolve_quda.cpp quda_arpack_interface.cpp
   multigrid.cpp transfer.cpp block_orthogonalize.cpp
