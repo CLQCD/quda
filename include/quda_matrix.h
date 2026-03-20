@@ -675,6 +675,22 @@ namespace quda {
     m = i_2 * am;
   }
 
+  template <typename Complex, int N> __device__ __host__ inline void makeRealHerm(Matrix<Complex, N> &m)
+  {
+    typedef typename Complex::value_type real;
+    // first make the matrix anti-hermitian
+    Matrix<Complex, N> hm = conj(m) + m;
+
+    // second make it traceless
+    real real_trace = 0.0;
+#pragma unroll
+    for (int i = 0; i < N; i++) real_trace += hm(i, i).x;
+#pragma unroll
+    for (int i = 0; i < N; i++) { hm(i, i).x -= real_trace / N; }
+    // third scale out
+    m = static_cast<real>(0.5) * hm;
+  }
+
   // Matrix and array are very similar
   // Maybe I should factor out the similar
   // code. However, I want to make sure that
@@ -852,15 +868,15 @@ namespace quda {
       // http://arxiv.org/pdf/hep-lat/0311018v1.pdf
       // Equation numbers in the paper are referenced by [eq_no].
 
-      //Declarations
+      // Declarations
       using real = typename T::value_type;
 
       constexpr real inv3 = static_cast<real>(1.0 / 3.0);
       constexpr real inv_pi = static_cast<real>(1.0 / M_PI);
       constexpr real inv_3pi = static_cast<real>(1.0 / (3.0 * M_PI));
 
-      Matrix<T,3> temp1;
-      Matrix<T,3> temp2;
+      Matrix<T, 3> temp1;
+      Matrix<T, 3> temp2;
       //[14] c0 = det(Q) = 1/3Tr(Q^3)
       real c0 = getDeterminant(Q).real();
       //[15] c1 = 1/2Tr(Q^2)
@@ -870,9 +886,9 @@ namespace quda {
       real Tr_re = getTrace(temp1).real();
       real c1 = static_cast<real>(0.5) * Tr_re;
 
-      //We now have the coeffiecients c0 and c1.
-      //We now find: exp(iQ) = f0*I + f1*Q + f2*Q^2
-      //      where       fj = fj(c0,c1), j=0,1,2.
+      // We now have the coeffiecients c0 and c1.
+      // We now find: exp(iQ) = f0*I + f1*Q + f2*Q^2
+      //       where       fj = fj(c0,c1), j=0,1,2.
 
       //[17]
       real sqrt_c1_inv3 = sqrt(c1 * inv3);
@@ -880,10 +896,10 @@ namespace quda {
 
       //[34] Test for c0 < 0.
       int parity = 0;
-      if(c0 < 0) {
-	c0 *= -1.0;
-	parity = 1;
-	//calculate fj with c0 > 0 and then convert all fj.
+      if (c0 < 0) {
+        c0 *= -1.0;
+        parity = 1;
+        // calculate fj with c0 > 0 and then convert all fj.
       }
 
       //[25]
@@ -910,13 +926,13 @@ namespace quda {
 
       //[33] Added one more term to the series given in the paper.
       if (w_p < 0.05 && w_p > -0.05) {
-	//1 - 1/6 x^2 (1 - 1/20 x^2 (1 - 1/42 x^2(1 - 1/72*x^2)))
-	sinc_w = 1.0 - (w_sq/6.0)*(1 - (w_sq*0.05)*(1 - (w_sq/42.0)*(1 - (w_sq/72.0))));
+        // 1 - 1/6 x^2 (1 - 1/20 x^2 (1 - 1/42 x^2(1 - 1/72*x^2)))
+        sinc_w = 1.0 - (w_sq / 6.0) * (1 - (w_sq * 0.05) * (1 - (w_sq / 42.0) * (1 - (w_sq / 72.0))));
       } else {
         sinc_w = sinpi(w_p * inv_pi) / w_p;
       }
 
-      //Get all the numerators for fj,
+      // Get all the numerators for fj,
       //[30] f0
       real hj_re
         = (u_sq - w_sq) * exp_2iu_re + 8 * u_sq * cos_w * exp_iu_re + 2 * u_p * (3 * u_sq + w_sq) * sinc_w * exp_iu_im;
@@ -925,13 +941,13 @@ namespace quda {
       T f0 {hj_re * denom_inv, hj_im * denom_inv};
 
       //[31] f1
-      hj_re = 2*u_p*exp_2iu_re - 2*u_p*cos_w*exp_iu_re + (3*u_sq - w_sq)*sinc_w*exp_iu_im;
-      hj_im = 2*u_p*exp_2iu_im + 2*u_p*cos_w*exp_iu_im + (3*u_sq - w_sq)*sinc_w*exp_iu_re;
+      hj_re = 2 * u_p * exp_2iu_re - 2 * u_p * cos_w * exp_iu_re + (3 * u_sq - w_sq) * sinc_w * exp_iu_im;
+      hj_im = 2 * u_p * exp_2iu_im + 2 * u_p * cos_w * exp_iu_im + (3 * u_sq - w_sq) * sinc_w * exp_iu_re;
       T f1 {hj_re * denom_inv, hj_im * denom_inv};
 
       //[32] f2
-      hj_re = exp_2iu_re - cos_w*exp_iu_re - 3*u_p*sinc_w*exp_iu_im;
-      hj_im = exp_2iu_im + cos_w*exp_iu_im - 3*u_p*sinc_w*exp_iu_re;
+      hj_re = exp_2iu_re - cos_w * exp_iu_re - 3 * u_p * sinc_w * exp_iu_im;
+      hj_im = exp_2iu_im + cos_w * exp_iu_im - 3 * u_p * sinc_w * exp_iu_re;
       T f2 {hj_re * denom_inv, hj_im * denom_inv};
 
       //[34] If c0 < 0, apply tranformation  fj(-c0,c1) = (-1)^j f^*j(c0,c1)
@@ -943,7 +959,7 @@ namespace quda {
 
       //[19] Construct exp{iQ}
       Matrix<T, 3> exp_iQ = {};
-      Matrix<T,3> UnitM;
+      Matrix<T, 3> UnitM;
       setIdentity(&UnitM);
       // +f0*I
       temp1 = f0 * UnitM;
@@ -958,8 +974,215 @@ namespace quda {
       temp2 = f2 * temp1;
       exp_iQ += temp2;
 
-      //exp(iQ) is now defined.
+      // exp(iQ) is now defined.
       return exp_iQ;
+    }
+
+    template <class T> __device__ __host__ inline auto deriv_exponentiate_iQ(const Matrix<T, 3> &Q, const Matrix<T, 3> &USigma)
+    {
+      // Use Cayley-Hamilton Theorem for SU(3) exp{iQ}.
+      // This algorithm is outlined in
+      // http://arxiv.org/pdf/hep-lat/0311018v1.pdf
+      // Equation numbers in the paper are referenced by [eq_no].
+
+      // Declarations
+      using real = typename T::value_type;
+
+      constexpr real inv3 = static_cast<real>(1.0 / 3.0);
+      constexpr real inv_pi = static_cast<real>(1.0 / M_PI);
+      constexpr real inv_3pi = static_cast<real>(1.0 / (3.0 * M_PI));
+
+      Matrix<T, 3> temp1;
+      Matrix<T, 3> temp2;
+      //[14] c0 = det(Q) = 1/3Tr(Q^3)
+      real c0 = getDeterminant(Q).real();
+      //[15] c1 = 1/2Tr(Q^2)
+      // Q = Q^dag => Tr(Q^2) = Tr(QQ^dag) = sum_ab [Q_ab * Q_ab^*]
+      temp1 = Q;
+      temp1 = temp1 * Q;
+      real Tr_re = getTrace(temp1).real();
+      real c1 = static_cast<real>(0.5) * Tr_re;
+
+      // We now have the coeffiecients c0 and c1.
+      // We now find: exp(iQ) = f0*I + f1*Q + f2*Q^2
+      //       where       fj = fj(c0,c1), j=0,1,2.
+
+      //[17]
+      real sqrt_c1_inv3 = sqrt(c1 * inv3);
+      real c0_max = 2 * (c1 * inv3 * sqrt_c1_inv3); // reuse the sqrt factor for a fast 1.5 power
+
+      //[34] Test for c0 < 0.
+      int parity = 0;
+      if (c0 < 0) {
+        c0 *= -1.0;
+        parity = 1;
+        // calculate fj with c0 > 0 and then convert all fj.
+      }
+
+      //[25]
+      real theta = acos(c0 / c0_max);
+
+      real u, w; // u, w parameters.
+      quda::sincospi(theta * inv_3pi, &w, &u);
+      //[23]
+      u *= sqrt_c1_inv3;
+
+      //[24]
+      w *= sqrt(c1);
+
+      //[29] Construct objects for fj = hj/(9u^2 - w^2).
+      real u_sq = u * u;
+      real w_sq = w * w;
+      real denom_inv = static_cast<real>(1.0) / (9 * u_sq - w_sq);
+      real exp_iu_re, exp_iu_im;
+      quda::sincospi(u * inv_pi, &exp_iu_im, &exp_iu_re);
+      real exp_2iu_re = exp_iu_re * exp_iu_re - exp_iu_im * exp_iu_im;
+      real exp_2iu_im = 2 * exp_iu_re * exp_iu_im;
+      real cos_w = cospi(w * inv_pi);
+      real sinc_w;
+
+      //[33] Added one more term to the series given in the paper.
+      if (w < 0.05 && w > -0.05) {
+        // 1 - 1/6 x^2 (1 - 1/20 x^2 (1 - 1/42 x^2 (1 - 1/72 * x^2)))
+        sinc_w = 1.0 - (w_sq / 6.0) * (1 - (w_sq * 0.05) * (1 - (w_sq / 42.0) * (1 - (w_sq / 72.0))));
+      } else {
+        sinc_w = sinpi(w * inv_pi) / w;
+      }
+
+      real xi0 = sinc_w;
+      real hj_re, hj_im;
+      // Get all the numerators for fj,
+      //[30] f0
+      // hj = (u_sq - w_sq) * exp_2iu + exp__iu * (8 * u_sq * cos_w + 2 * i * u * (3 * u_sq + w_sq) * xi0);
+      // T f0 = hj * denom_inv;
+      hj_re = (u_sq - w_sq) * exp_2iu_re + exp_iu_re * (8 * u_sq * cos_w) + exp_iu_im * (2 * u * (3 * u_sq + w_sq) * xi0);
+      hj_im = (u_sq - w_sq) * exp_2iu_im - exp_iu_im * (8 * u_sq * cos_w) + exp_iu_re * (2 * u * (3 * u_sq + w_sq) * xi0);
+      T f0 {hj_re * denom_inv, hj_im * denom_inv};
+
+      //[31] f1
+      hj_re = 2 * u * exp_2iu_re - 2 * u * cos_w * exp_iu_re + (3 * u_sq - w_sq) * xi0 * exp_iu_im;
+      hj_im = 2 * u * exp_2iu_im + 2 * u * cos_w * exp_iu_im + (3 * u_sq - w_sq) * xi0 * exp_iu_re;
+      T f1 {hj_re * denom_inv, hj_im * denom_inv};
+
+      //[32] f2
+      hj_re = exp_2iu_re - cos_w * exp_iu_re - 3 * u * xi0 * exp_iu_im;
+      hj_im = exp_2iu_im + cos_w * exp_iu_im - 3 * u * xi0 * exp_iu_re;
+      T f2 {hj_re * denom_inv, hj_im * denom_inv};
+
+      //[57], [58] Construct objects for b1j, b2j.
+      denom_inv = static_cast<real>(1.0) / (2 * (9 * u_sq - w_sq) * (9 * u_sq - w_sq));
+      real dsinc_w_over_w;
+
+      if (w < 0.05 && w > -0.05) {
+        dsinc_w_over_w = -1 / 3 + w_sq / 30 * (1 - w_sq / 260 * (1 - w_sq / 54 * (1 - w_sq / 88)));
+      } else {
+        dsinc_w_over_w = cos_w / w_sq - sinc_w / w_sq;
+      }
+
+      real xi1 = dsinc_w_over_w;
+      real r1j_re, r1j_im, r2j_re, r2j_im;
+
+      //[60]
+      {
+        const real a_re = 8 * u * cos_w + u * (3 * u_sq + w_sq) * xi0;
+        const real a_im = -4 * u_sq * cos_w + (9 * u_sq + w_sq) * xi0;
+        r1j_re = 2 * (u * exp_2iu_re - (u_sq - w_sq) * exp_2iu_im) + 2 * (exp_iu_re * a_re + exp_iu_im * a_im);
+        r1j_im = 2 * (u * exp_2iu_im + (u_sq - w_sq) * exp_2iu_re) + 2 * (-exp_iu_im * a_re + exp_iu_re * a_im);
+      }
+      T r1j {r1j_re, r1j_im};
+
+      {
+        const real a_re = cos_w + xi0 + 3 * u_sq * xi1;
+        const real a_im = 4 * u * xi0;
+        r2j_re = -2 * exp_2iu_re + 2 * u * (exp_iu_im * a_re - exp_iu_re * a_im);
+        r2j_im = -2 * exp_2iu_im + 2 * u * (exp_iu_re * a_re + exp_iu_im * a_im);
+      }
+      T r2j {r2j_re, r2j_im};
+      T b10 = (2 * u * r1j + (3 * u_sq - w_sq) * r2j - 2 * (15 * u_sq + w_sq) * f0) * denom_inv;
+      //[63]
+      T b20 = (r1j - 3 * u * r2j - 24 * u * f0) * denom_inv;
+
+      //[61]
+      {
+        const real a_re = -2 * cos_w + (3 * u_sq - w_sq) * xi0;
+        const real a_im = 2 * u * cos_w + 6 * u * xi0;
+        r1j_re = 2 * exp_2iu_re - 4 * u * exp_2iu_im + exp_iu_re * a_re + exp_iu_im * a_im;
+        r1j_im = 2 * exp_2iu_im + 4 * u * exp_2iu_re - exp_iu_im * a_re + exp_iu_re * a_im;
+      }
+      r1j = T {r1j_re, r1j_im};
+
+      {
+        const real a_re = cos_w + xi0 - 3 * u_sq * xi1;
+        const real a_im = 2 * u * xi0;
+        r2j_re = -exp_iu_im * a_re + exp_iu_re * a_im;
+        r2j_im = -(exp_iu_re * a_re + exp_iu_im * a_im);
+      }
+      r2j = T {r2j_re, r2j_im};
+      T b11 = (2 * u * r1j + (3 * u_sq - w_sq) * r2j - 2 * (15 * u_sq + w_sq) * f1) * denom_inv;
+      //[64]
+      T b21 = (r1j - 3 * u * r2j - 24 * u * f1) * denom_inv;
+
+      //[62]
+      {
+        const real a_re = cos_w - 3 * xi0;
+        const real a_im = 3 * u * xi0;
+        r1j_re = -2 * exp_2iu_im + exp_iu_im * a_re - exp_iu_re * a_im;
+        r1j_im = 2 * exp_2iu_re + exp_iu_re * a_re + exp_iu_im * a_im;
+      }
+      r1j = T {r1j_re, r1j_im};
+
+      {
+        const real a_re = xi0;
+        const real a_im = -3 * u * xi1;
+        r2j_re = exp_iu_re * a_re + exp_iu_im * a_im;
+        r2j_im = -exp_iu_im * a_re + exp_iu_re * a_im;
+      }
+      r2j = T {r2j_re, r2j_im};
+      T b12 = (2 * u * r1j + (3 * u_sq - w_sq) * r2j - 2 * (15 * u_sq + w_sq) * f2) * denom_inv;
+      //[65]
+      T b22 = (r1j - 3 * u * r2j - 24 * u * f2) * denom_inv;
+
+      //[34] If c0 < 0, apply tranformation  fj(-c0,c1) = (-1)^j f^*j(c0,c1)
+      if (parity == 1) {
+        f0.imag(-f0.imag());
+        f1.real(-f1.real());
+        f2.imag(-f2.imag());
+        b10.imag(-b10.imag());
+        b11.real(-b11.real());
+        b12.imag(-b12.imag());
+        b20.real(-b10.real());
+        b21.imag(-b11.imag());
+        b22.real(-b12.real());
+      }
+
+      Matrix<T, 3> B1, B2;
+      Matrix<T, 3> UnitM;
+      setIdentity(&UnitM);
+
+      temp1 = b10 * UnitM;
+      B1 = temp1;
+      temp2 = b20 * UnitM;
+      B2 = temp2;
+
+      temp1 = b11 * Q;
+      B1 += temp1;
+      temp2 = b21 * Q;
+      B2 += temp2;
+
+      temp1 = b12 * (Q * Q);
+      B1 += temp1;
+      temp2 = b22 * (Q * Q);
+      B2 += temp2;
+
+      //[69] Construct dexp{iQ}
+      Matrix<T, 3> Gamma = {};
+      Gamma += getTrace(USigma * B1) * Q;
+      Gamma += getTrace(USigma * B2) * (Q * Q);
+      Gamma += f1 * USigma;
+      Gamma += f2 * (Q * USigma);
+      Gamma += f2 * (USigma * Q);
+
+      return Gamma;
     }
 
     /**

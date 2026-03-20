@@ -4816,6 +4816,48 @@ void computeHISQForceQuda(void* const milc_momentum,
     momResident = GaugeField();
 }
 
+void computeStoutForceQuda(void *h_force, QudaGaugeParam *gauge_param, QudaGaugeSmearParam *smear_param)
+{
+  auto profile = pushProfile(profileGaugeSmear);
+
+  checkGaugeParam(gauge_param);
+  checkGaugeSmearParam(smear_param);
+  if (!gaugePrecise) errorQuda("No resident gauge field");
+
+  if (smear_param->smear_type != QUDA_GAUGE_SMEAR_STOUT) errorQuda("Unsupported smear type %d", smear_param->smear_type);
+
+  GaugeFieldParam fParam(*gauge_param, h_force, QUDA_ASQTAD_GENERAL_LINKS);
+  GaugeField cpuForce = !gauge_param->use_resident_force ? GaugeField(fParam) : GaugeField();
+
+  fParam.location = QUDA_CUDA_FIELD_LOCATION;
+  fParam.create = gauge_param->overwrite_force ? QUDA_ZERO_FIELD_CREATE : QUDA_COPY_FIELD_CREATE;
+  fParam.field = &cpuForce;
+  fParam.reconstruct = QUDA_RECONSTRUCT_NO;
+  fParam.setPrecision(gauge_param->cuda_prec, true);
+
+  if (gauge_param->use_resident_force && !forceResident.Length()) errorQuda("No resident force field to use");
+  GaugeField cudaForce = gauge_param->use_resident_force ? forceResident.create_alias() : GaugeField(fParam);
+  if (gauge_param->use_resident_force && gauge_param->overwrite_force) cudaForce.zero();
+
+  updateExtendedGaugeResident(false, R, profileGaugeSmear);
+  GaugeField &cudaGaugeEx = *extendedGaugeResident;
+
+  GaugeFieldParam lParam(cudaGaugeEx);
+  lParam.location = QUDA_CUDA_FIELD_LOCATION;
+  lParam.reconstruct = QUDA_RECONSTRUCT_NO;
+  lParam.setPrecision(gauge_param->cuda_prec, true);
+  GaugeField cudaLambda(lParam);
+
+  STOUTForceStep(cudaForce, cudaLambda, cudaGaugeEx, smear_param->rho, smear_param->dir_ignore, smear_param->smear_anisotropy);
+
+  // copy the force field back to the host
+  if (gauge_param->return_result_force) cpuForce.copy(cudaForce);
+  if (gauge_param->make_resident_force && gauge_param->use_resident_force)
+    std::exchange(forceResident, cudaForce);
+  else if (!gauge_param->make_resident_force)
+    forceResident = GaugeField();
+}
+
 void computeCloverForceV2Quda(void *h_force, double dt, void **h_x, void **, double *coeff, double kappa2, double ck,
                             int nvector, double multiplicity, void *, QudaGaugeParam *gauge_param,
                             QudaInvertParam *inv_param)

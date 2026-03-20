@@ -145,6 +145,9 @@ namespace quda
   */
   void HYPStep(GaugeField &dataDs, GaugeField &dataOr, double alpha1, double alpha2, double alpha3, int dir_ignore);
 
+  void STOUTForceStep(GaugeField &force, GaugeField &lambda, GaugeField &gauge, double rho, int dir_ignore,
+                      double smear_anisotropy);
+
   /**
      @brief Apply Wilson Flow steps to the gauge field.
      This routine assumes that the input and output fields are
