@@ -70,7 +70,8 @@ namespace quda
     int current_slot = -1;
     int k_step_load = -1;
     if (strcmp(eig_param->chk_infile, "") != 0) {
-      if (loadTRLMCheckpoint(eig_param->chk_infile, kSpace, alpha, beta, restart_iter, 
+      // Restore solver state from the latest valid checkpoint when available.
+      if (loadCheckpoint(eig_param->chk_infile, kSpace, alpha, beta, restart_iter,
                              iter, num_locked, num_converged, num_keep, n_kr, k_step_load, current_slot)) {
          
          for (int i = num_locked; i < n_kr; i++) {
@@ -111,8 +112,9 @@ namespace quda
           getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
           if (eig_param->chk_save_interval > 0 && iter % eig_param->chk_save_interval == 0 && step < n_kr - 1) {
              if (strcmp(eig_param->chk_outfile, "") != 0) {
-                saveTRLMCheckpoint(eig_param->chk_outfile, kSpace, alpha, beta, 
-                                   restart_iter, iter, num_locked, 
+               // Periodic checkpoint during Lanczos expansion.
+                saveCheckpoint(eig_param->chk_outfile, kSpace, alpha, beta,
+                                   restart_iter, iter, num_locked,
                                    num_converged, num_keep, n_kr, step + 1, current_slot, eig_param->chk_save_interval);
              }
           }
@@ -193,8 +195,9 @@ namespace quda
 
       getProfile().TPSTOP(QUDA_PROFILE_COMPUTE);
       if (strcmp(eig_param->chk_outfile, "") != 0) {
-        saveTRLMCheckpoint(eig_param->chk_outfile, kSpace, alpha, beta, 
-                            restart_iter + 1, iter, num_locked, 
+        // Save the compact restart state at the end of each restart cycle.
+        saveCheckpoint(eig_param->chk_outfile, kSpace, alpha, beta,
+                restart_iter + 1, iter, num_locked,
                             num_converged, num_keep, n_kr, num_keep, current_slot, eig_param->chk_save_interval);
       }
       getProfile().TPSTART(QUDA_PROFILE_COMPUTE);
