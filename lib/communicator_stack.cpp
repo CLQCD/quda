@@ -121,6 +121,8 @@ namespace quda
 
   int comm_coord_global(int dim) { return get_default_communicator().comm_coord(dim); }
 
+  const int *comm_coords_from_rank(int rank) { return get_current_communicator().comm_coords_from_rank(rank); }
+
   int comm_rank_from_coords(const int *coords) { return get_current_communicator().comm_rank_from_coords(coords); }
 
   void comm_init(int ndim, const int *dims, QudaCommsMap rank_from_coords, void *map_data, bool user_set_comm_handle,

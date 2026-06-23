@@ -725,6 +725,12 @@ namespace quda
 
   size_t comm_size(void);
 
+  const int *comm_coords_from_rank(int rank)
+  {
+    Topology *topo = comm_default_topology();
+    return ::quda::comm_coords_from_rank(topo, rank);
+  }
+
   int comm_rank_from_coords(const int *coords)
   {
     Topology *topo = comm_default_topology();

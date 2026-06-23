@@ -1,5 +1,5 @@
 #include <iostream>
-#include <qmp.h>
+#include <comm_quda.h>
 #include <qio.h>
 #include <quda.h>
 #include <util_quda.h>
@@ -213,10 +213,10 @@ void set_layout(const int *X, QudaSiteSubset subset = QUDA_FULL_SITE_SUBSET)
   }
 
   /* Set the mapping of coordinates to nodes */
-  if (quda_setup_layout(lattice_size, lattice_dim, QMP_get_number_of_nodes(), subset == QUDA_PARITY_SITE_SUBSET) != 0) {
+  if (quda_setup_layout(lattice_size, lattice_dim, comm_size(), subset == QUDA_PARITY_SITE_SUBSET) != 0) {
     errorQuda("Setup layout failed\n");
   }
-  printfQuda("%s layout set for %d nodes\n", __func__, QMP_get_number_of_nodes());
+  printfQuda("%s layout set for %d nodes\n", __func__, comm_size());
 
   /* Build the layout structure */
 #ifdef QIO_HAS_EXTENDED_LAYOUT
@@ -244,12 +244,12 @@ void set_layout(const int *X, QudaSiteSubset subset = QUDA_FULL_SITE_SUBSET)
   layout.latdim          = lattice_dim;
   layout.volume          = lattice_volume;
   layout.this_node = quda_this_node;
-  layout.number_of_nodes = QMP_get_number_of_nodes();
+  layout.number_of_nodes = comm_size();
 }
 
 void read_gauge_field(const char *filename, void *gauge[], QudaPrecision precision, const int *X, int, char *[])
 {
-  quda_this_node = QMP_get_node_number();
+  quda_this_node = comm_rank();
 
   set_layout(X);
 
@@ -270,7 +270,7 @@ void read_gauge_field(const char *filename, void *gauge[], QudaPrecision precisi
 void read_spinor_field(const char *filename, void *V[], QudaPrecision precision, const int *X, QudaSiteSubset subset,
                        QudaParity parity, int nColor, int nSpin, int Nvec, int, char *[])
 {
-  quda_this_node = QMP_get_node_number();
+  quda_this_node = comm_rank();
 
   set_layout(X, subset);
 
@@ -390,7 +390,7 @@ int write_su3_field(QIO_Writer *outfile, int count, const void *field_out[],
 
 void write_gauge_field(const char *filename, void *gauge[], QudaPrecision precision, const int *X, int, char *[])
 {
-  quda_this_node = QMP_get_node_number();
+  quda_this_node = comm_rank();
 
   set_layout(X);
 
@@ -417,7 +417,7 @@ void write_spinor_field(const char *filename, const void *V[], QudaPrecision pre
                         QudaSiteSubset subset, QudaParity parity, int nColor, int nSpin, int Nvec, int, char *[],
                         bool partfile)
 {
-  quda_this_node = QMP_get_node_number();
+  quda_this_node = comm_rank();
 
   set_layout(X, subset);
 

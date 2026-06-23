@@ -557,30 +557,34 @@ endif()
 # ######################################################################################################################
 # QIO
 # ######################################################################################################################
-if(QUDA_QIO)
-  if(NOT QUDA_QMP)
-    message(FATAL_ERROR "Use of QIO (via QUDA_QIO=ON) requires QMP. Please set QUDA_QMP=ON.")
-  endif()
-  if(QUDA_DOWNLOAD_USQCD)
-    set(QUDA_QIO_TAG
-        "qio3-0-0"
-        CACHE STRING "Git tag to use for QIO when using QUDA_DOWNLOAD_USQCD")
-    mark_as_advanced(QUDA_QIO_TAG)
-    CPMAddPackage(
-      NAME
-      QIO
-      GITHUB_REPOSITORY
-      usqcd-software/qio
-      GIT_TAG
-      ${QUDA_QIO_TAG}
-      OPTIONS 
-        "QIO_ENABLE_PARALLEL_BUILD ON"
-        "QIO_ENABLE_QMP_ROUTE OFF" 
-        "QIO_ENABLE_OUTPUT_BUFFERING ON" 
-      "QIO_DML_BUF_BYTES 33554432")
-  else()
-    find_package(QIO REQUIRED)
-  endif()
+# if(QUDA_QIO)
+#   if(NOT QUDA_QMP)
+#     message(FATAL_ERROR "Use of QIO (via QUDA_QIO=ON) requires QMP. Please set QUDA_QMP=ON.")
+#   endif()
+#   if(QUDA_DOWNLOAD_USQCD)
+#     set(QUDA_QIO_TAG
+#         "qio3-0-0"
+#         CACHE STRING "Git tag to use for QIO when using QUDA_DOWNLOAD_USQCD")
+#     mark_as_advanced(QUDA_QIO_TAG)
+#     CPMAddPackage(
+#       NAME
+#       QIO
+#       GITHUB_REPOSITORY
+#       usqcd-software/qio
+#       GIT_TAG
+#       ${QUDA_QIO_TAG}
+#       OPTIONS 
+#         "QIO_ENABLE_PARALLEL_BUILD ON"
+#         "QIO_ENABLE_QMP_ROUTE OFF" 
+#         "QIO_ENABLE_OUTPUT_BUFFERING ON" 
+#       "QIO_DML_BUF_BYTES 33554432")
+#   else()
+#     find_package(QIO REQUIRED)
+#   endif()
+# endif()
+
+if (QUDA_QIO)
+  find_package(QIO REQUIRED)
 endif()
 
 # ######################################################################################################################

@@ -247,7 +247,7 @@ INSTANTIATE_TEST_SUITE_P(Full, ColorSpinorIOTest,
                            name += get_prec_str(::testing::get<4>(param.param)) + std::string("_");
                            name += get_prec_str(::testing::get<5>(param.param)) + std::string("_");
                            name += std::string("spin") + std::to_string(::testing::get<6>(param.param));
-                           name += ::testing::get<7>(param.param) ? "_singlefile" : "_partfile";
+                           name += ::testing::get<7>(param.param) ? "_partfile" : "_singlefile";
                            name += ::testing::get<8>(param.param) == QUDA_CUDA_FIELD_LOCATION ? "_device" : "_host";
                            return name;
                          });
@@ -268,7 +268,7 @@ INSTANTIATE_TEST_SUITE_P(Parity, ColorSpinorIOTest,
                            name += get_prec_str(::testing::get<4>(param.param)) + std::string("_");
                            name += get_prec_str(::testing::get<5>(param.param)) + std::string("_");
                            name += std::string("spin") + std::to_string(::testing::get<6>(param.param));
-                           name += ::testing::get<7>(param.param) ? "_singlefile" : "_partfile";
+                           name += ::testing::get<7>(param.param) ? "_partfile" : "_singlefile";
                            name += ::testing::get<8>(param.param) == QUDA_CUDA_FIELD_LOCATION ? "_device" : "_host";
                            return name;
                          });

@@ -77,6 +77,10 @@ namespace quda
   */
   int comm_coord_global(int dim);
 
+  const int *comm_coords_from_rank(int rank);
+
+  int comm_rank_from_coords(const int *coords);
+
   /**
    * Declare a message handle for sending `nbytes` to the `rank` with `tag`.
    */

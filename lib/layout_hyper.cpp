@@ -10,7 +10,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <qmp.h>
+#include <comm_quda.h>
 #include <layout_hyper.h>
 #include <util_quda.h>
 
@@ -43,14 +43,14 @@ int quda_setup_layout(int len[], int nd, int, int single_parity_)
   if (mcoord) free(mcoord);
   mcoord = (int *)malloc(ndim * sizeof(int));
 
-  /* setup QMP logical topology */
-  if (!QMP_logical_topology_is_declared()) {
-    if (QMP_declare_logical_topology(nsquares, ndim) != 0) return 1;
-  }
+  // /* setup QMP logical topology */
+  // if (!QMP_logical_topology_is_declared()) {
+  //   if (QMP_declare_logical_topology(nsquares, ndim) != 0) return 1;
+  // }
 
   // use the predetermined geometry
   for (int i = 0; i < ndim; i++) {
-    nsquares[i] = QMP_get_logical_dimensions()[i];
+    nsquares[i] = quda::comm_dim(i);
     squaresize[i] = len[i] / nsquares[i];
   }
 
@@ -79,7 +79,7 @@ int quda_setup_layout(int len[], int nd, int, int single_parity_)
 int quda_node_number(const int x[])
 {
   for (int i = 0; i < ndim; i++) { mcoord[i] = x[i] / squaresize[i]; }
-  return QMP_get_node_number_from(mcoord);
+  return quda::comm_rank_from_coords(mcoord);
 }
 
 #ifdef QIO_HAS_EXTENDED_LAYOUT
@@ -130,7 +130,7 @@ int quda_node_index(const int x[])
 void quda_get_coords_helper(int x[], int node, size_t index)
 {
   size_t si = index;
-  int *m = QMP_get_logical_coordinates_from(node);
+  const int *m = quda::comm_coords_from_rank(node);
 
   size_t s = 0;
   for (int i = 0; i < ndim; ++i) {
@@ -165,8 +165,6 @@ void quda_get_coords_helper(int x[], int node, size_t index)
     x[0] += index;
   }
 
-  free(m);
-
   /* Check the result */
 #ifdef QIO_HAS_EXTENDED_LAYOUT
   size_t node_index = quda_node_index_ext(x, NULL);
@@ -182,7 +180,7 @@ void quda_get_coords_helper(int x[], int node, size_t index)
       fprintf(stderr, "%i\tindex=%lu\tx=(", node, (size_t)si);
       for (int i = 0; i < ndim; i++) fprintf(stderr, i < ndim - 1 ? "%i, " : "%i)\n", x[i]);
     }
-    QMP_abort(1);
+    quda::comm_abort(1);
     exit(1);
   }
 }
