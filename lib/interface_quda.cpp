@@ -539,7 +539,7 @@ void initQudaMemory(void)
 
   blas_lapack::native::init();
 
-  num_failures_h = static_cast<int *>(mapped_malloc(sizeof(int)));
+  num_failures_h = static_cast<int *>(host_pinned_malloc(sizeof(int)));
   num_failures_d = static_cast<int *>(get_mapped_device_pointer(num_failures_h));
 
   for (int d=0; d<4; d++) R[d] = 2 * (redundant_comms || commDimPartitioned(d));
@@ -729,7 +729,6 @@ void loadGaugeQuda(void *h_gauge, QudaGaugeParam *param)
   gauge_param.reconstruct = param->reconstruct;
   gauge_param.setPrecision(param->cuda_prec, true);
   gauge_param.ghostExchange = QUDA_GHOST_EXCHANGE_PAD;
-  gauge_param.pad = param->ga_pad;
   gauge_param.location = QUDA_CUDA_FIELD_LOCATION;
 
   precise = new GaugeField(gauge_param);
@@ -886,7 +885,6 @@ void saveGaugeQuda(void *h_gauge, QudaGaugeParam *param)
     gauge_param.reconstruct = param->reconstruct;
     gauge_param.setPrecision(param->cuda_prec, true);
     gauge_param.ghostExchange = QUDA_GHOST_EXCHANGE_PAD;
-    gauge_param.pad = param->ga_pad;
     cudaGauge = new GaugeField(gauge_param);
     copyExtendedGauge(*cudaGauge, *gaugeSmeared, QUDA_CUDA_FIELD_LOCATION);
     break;
@@ -1498,7 +1496,7 @@ void flushPoolQuda(QudaMemoryType type)
     pool::flush_device();
     break;
   case QUDA_MEMORY_HOST_PINNED:
-    pool::flush_pinned();
+    pool::flush_host_pinned();
     break;
   default:
     errorQuda("MemoryType %d not supported", type);
@@ -1531,7 +1529,7 @@ void endQuda(void)
     blas_lapack::native::destroy();
     reducer::destroy();
 
-    pool::flush_pinned();
+    pool::flush_host_pinned();
     pool::flush_device();
 
     host_free(num_failures_h);
@@ -3122,8 +3120,8 @@ deflated_solver::deflated_solver(QudaEigParam &eig_param, TimeProfile &profile)
     printfQuda("allocating bytes: %lu (lattice volume %d, prec %d)", byte_estimate, ritzVolume, ritzParam.Precision());
     if (ritzParam.mem_type == QUDA_MEMORY_DEVICE)
       printfQuda("Using device memory type.\n");
-    else if (ritzParam.mem_type == QUDA_MEMORY_MAPPED)
-      printfQuda("Using mapped memory type.\n");
+    else if (ritzParam.mem_type == QUDA_MEMORY_HOST_PINNED)
+      printfQuda("Using host-pinned (GPU-mapped) memory type.\n");
   }
 
   RV = ColorSpinorField::Create(ritzParam);
@@ -3176,25 +3174,10 @@ void loadFatLongGaugeQuda(QudaInvertParam *inv_param, QudaGaugeParam *gauge_para
   auto link_recon_precondition = gauge_param->reconstruct_precondition;
 
   // Specific gauge parameters for MILC
-  int pad_size = 0;
-#ifdef MULTI_GPU
-  int x_face_size = gauge_param->X[1] * gauge_param->X[2] * gauge_param->X[3] / 2;
-  int y_face_size = gauge_param->X[0] * gauge_param->X[2] * gauge_param->X[3] / 2;
-  int z_face_size = gauge_param->X[0] * gauge_param->X[1] * gauge_param->X[3] / 2;
-  int t_face_size = gauge_param->X[0] * gauge_param->X[1] * gauge_param->X[2] / 2;
-  pad_size = MAX(x_face_size, y_face_size);
-  pad_size = MAX(pad_size, z_face_size);
-  pad_size = MAX(pad_size, t_face_size);
-#endif
-
-  int fat_pad = pad_size;
-  int link_pad = 3 * pad_size;
-
   gauge_param->type = (inv_param->dslash_type == QUDA_STAGGERED_DSLASH || inv_param->dslash_type == QUDA_LAPLACE_DSLASH) ?
     QUDA_SU3_LINKS :
     QUDA_ASQTAD_FAT_LINKS;
 
-  gauge_param->ga_pad = fat_pad;
   if (inv_param->dslash_type == QUDA_STAGGERED_DSLASH || inv_param->dslash_type == QUDA_LAPLACE_DSLASH) {
     gauge_param->reconstruct = link_recon;
     gauge_param->reconstruct_sloppy = link_recon_sloppy;
@@ -3210,7 +3193,6 @@ void loadFatLongGaugeQuda(QudaInvertParam *inv_param, QudaGaugeParam *gauge_para
 
   if (inv_param->dslash_type == QUDA_ASQTAD_DSLASH) {
     gauge_param->type = QUDA_ASQTAD_LONG_LINKS;
-    gauge_param->ga_pad = link_pad;
     gauge_param->staggered_phase_type = QUDA_STAGGERED_PHASE_NO;
     gauge_param->reconstruct = link_recon;
     gauge_param->reconstruct_sloppy = link_recon_sloppy;
@@ -4626,8 +4608,7 @@ void computeHISQForceQuda(void* const milc_momentum,
     }
 
     { // naik terms
-      oneLinkOprod.copy(stapleOprod);
-      ax(level2_coeff[0], oneLinkOprod);
+      oneLinkOprod.copy(stapleOprod, level2_coeff[0]);
       GaugeField *oprod[2] = {&oneLinkOprod, &naikOprod};
 
       // loop over different quark fields
@@ -4643,21 +4624,10 @@ void computeHISQForceQuda(void* const milc_momentum,
     }
   }
 
-  // Compute the pad size
-  int pad_size = 0;
-#ifdef MULTI_GPU
-  int x_face_size = gParam->X[1] * gParam->X[2] * gParam->X[3] / 2;
-  int y_face_size = gParam->X[0] * gParam->X[2] * gParam->X[3] / 2;
-  int z_face_size = gParam->X[0] * gParam->X[1] * gParam->X[3] / 2;
-  int t_face_size = gParam->X[0] * gParam->X[1] * gParam->X[2] / 2;
-  pad_size = std::max({x_face_size, y_face_size, z_face_size, t_face_size});
-#endif
-
   // Copy outer product fields into input force fields
   GaugeFieldParam oParamEx(oParam);
   oParamEx.create = QUDA_NULL_FIELD_CREATE;
   oParamEx.nFace = 1;
-  oParamEx.pad = pad_size;
   oParamEx.ghostExchange = QUDA_GHOST_EXCHANGE_EXTENDED;
   lat_dim_t R = {2 * comm_dim_partitioned(0), 2 * comm_dim_partitioned(1), 2 * comm_dim_partitioned(2),
                  2 * comm_dim_partitioned(3)};
@@ -4713,7 +4683,6 @@ void computeHISQForceQuda(void* const milc_momentum,
   GaugeField cpuULink(uParam);
 
   // Load the W field, which contains U(3) matrices, to the device
-  gParam_field.ga_pad = 3 * pad_size;
   wParam = GaugeFieldParam(gParam_field);
   for (int dir = 0; dir < 4; dir++) {
     wParam.x[dir] += 2 * R[dir];
@@ -4761,7 +4730,6 @@ void computeHISQForceQuda(void* const milc_momentum,
   vParam.create = QUDA_NULL_FIELD_CREATE;
   vParam.setPrecision(gParam->cpu_prec, true);
   vParam.ghostExchange = QUDA_GHOST_EXCHANGE_EXTENDED;
-  vParam.pad = 3 * pad_size;
   GaugeField cudaVLink(vParam);
 
   cudaVLink.copy(cpuVLink);
@@ -4786,7 +4754,6 @@ void computeHISQForceQuda(void* const milc_momentum,
   uParam.create = QUDA_NULL_FIELD_CREATE;
   uParam.setPrecision(gParam->cpu_prec, true);
   uParam.ghostExchange = QUDA_GHOST_EXCHANGE_EXTENDED;
-  uParam.pad = 3 * pad_size;
   GaugeField cudaULink(uParam);
 
   cudaULink.copy(cpuULink);

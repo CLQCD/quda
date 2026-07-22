@@ -28,15 +28,20 @@ namespace quda
     const int dir_ignore;
     const real anisotropy;
 
-    STOUTArg(GaugeField &out, const GaugeField &in, real rho, int dir_ignore, real anisotropy) :
-      kernel_param(dim3(1, 2, stoutDim)), out(out), in(in), rho(rho), dir_ignore(dir_ignore), anisotropy(anisotropy)
+    STOUTArg(GaugeField &out, const GaugeField &in, real rho, real epsilon, int dir_ignore, real anisotropy) :
+      kernel_param(dim3(in.LocalVolumeCB(), 2, stoutDim)),
+      out(out),
+      in(in),
+      rho(rho),
+      staple_coeff(rho * (5.0 - 2.0 * epsilon) / 3.0),
+      rectangle_coeff(rho * (1.0 - epsilon) / 12.0),
+      dir_ignore(dir_ignore),
+      anisotropy(anisotropy)
     {
       for (int dir = 0; dir < 4; ++dir) {
         border[dir] = in.R()[dir];
         X[dir] = in.X()[dir] - border[dir] * 2;
-        this->threads.x *= X[dir];
       }
-      this->threads.x /= 2;
     }
   };
 
