@@ -81,17 +81,17 @@ extern "C" {
 
     int overwrite_gauge; /**< When computing gauge, should we overwrite it or accumulate to it */
     int overwrite_mom;   /**< When computing momentum, should we overwrite it or accumulate to it */
-    int overwrite_force;   /**< When computing force, should we overwrite it or accumulate to it */
+    int overwrite_force; /**< When computing force, should we overwrite it or accumulate to it */
 
     int use_resident_gauge;  /**< Use the resident gauge field as input */
     int use_resident_mom;    /**< Use the resident momentum field as input*/
-    int use_resident_force;    /**< Use the resident force field as input*/
+    int use_resident_force;  /**< Use the resident force field as input*/
     int make_resident_gauge; /**< Make the result gauge field resident */
     int make_resident_mom;   /**< Make the result momentum field resident */
-    int make_resident_force;   /**< Make the result force field resident */
+    int make_resident_force; /**< Make the result force field resident */
     int return_result_gauge; /**< Return the result gauge field */
     int return_result_mom;   /**< Return the result momentum field */
-    int return_result_force;   /**< Return the result force field */
+    int return_result_force; /**< Return the result force field */
 
     size_t gauge_offset; /**< Offset into MILC site struct to the gauge field (only if gauge_order=MILC_SITE_GAUGE_ORDER) */
     size_t mom_offset; /**< Offset into MILC site struct to the momentum field (only if gauge_order=MILC_SITE_GAUGE_ORDER) */

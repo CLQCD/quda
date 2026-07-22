@@ -4791,7 +4791,8 @@ void computeStoutForceQuda(void *h_force, QudaGaugeParam *gauge_param, QudaGauge
   checkGaugeSmearParam(smear_param);
   if (!gaugePrecise) errorQuda("No resident gauge field");
 
-  if (smear_param->smear_type != QUDA_GAUGE_SMEAR_STOUT) errorQuda("Unsupported smear type %d", smear_param->smear_type);
+  if (smear_param->smear_type != QUDA_GAUGE_SMEAR_STOUT)
+    errorQuda("Unsupported smear type %d", smear_param->smear_type);
 
   GaugeFieldParam fParam(*gauge_param, h_force, QUDA_ASQTAD_GENERAL_LINKS);
   GaugeField cpuForce = !gauge_param->use_resident_force ? GaugeField(fParam) : GaugeField();
@@ -4815,7 +4816,8 @@ void computeStoutForceQuda(void *h_force, QudaGaugeParam *gauge_param, QudaGauge
   lParam.setPrecision(gauge_param->cuda_prec, true);
   GaugeField cudaLambda(lParam);
 
-  STOUTForceStep(cudaForce, cudaLambda, cudaGaugeEx, smear_param->rho, smear_param->dir_ignore, smear_param->smear_anisotropy);
+  STOUTForceStep(cudaForce, cudaLambda, cudaGaugeEx, smear_param->rho, smear_param->dir_ignore,
+                 smear_param->smear_anisotropy);
 
   // copy the force field back to the host
   if (gauge_param->return_result_force) cpuForce.copy(cudaForce);
@@ -4826,8 +4828,8 @@ void computeStoutForceQuda(void *h_force, QudaGaugeParam *gauge_param, QudaGauge
 }
 
 void computeCloverForceV2Quda(void *h_force, double dt, void **h_x, void **, double *coeff, double kappa2, double ck,
-                            int nvector, double multiplicity, void *, QudaGaugeParam *gauge_param,
-                            QudaInvertParam *inv_param)
+                              int nvector, double multiplicity, void *, QudaGaugeParam *gauge_param,
+                              QudaInvertParam *inv_param)
 {
   using namespace quda;
   auto profile = pushProfile(profileCloverForce, inv_param);

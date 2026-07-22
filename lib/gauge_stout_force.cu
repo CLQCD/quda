@@ -76,7 +76,7 @@ namespace quda
 
   public:
     GaugeSTOUTForceSigma(const GaugeField &gauge, GaugeField &sigma, const GaugeField &lambda, double rho,
-                          int dir_ignore, double anisotropy) :
+                         int dir_ignore, double anisotropy) :
       TunableKernel3D(gauge, 2, (dir_ignore == 4) ? 4 : 3),
       sigma(sigma),
       lambda(lambda),

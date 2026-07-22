@@ -981,7 +981,8 @@ namespace quda {
       return exp_iQ;
     }
 
-    template <class T> __device__ __host__ inline auto deriv_exponentiate_iQ(const Matrix<T, 3> &Q, const Matrix<T, 3> &USigma)
+    template <class T>
+    __device__ __host__ inline auto deriv_exponentiate_iQ(const Matrix<T, 3> &Q, const Matrix<T, 3> &USigma)
     {
       // Use Cayley-Hamilton Theorem for SU(3) exp{iQ}.
       // This algorithm is outlined in

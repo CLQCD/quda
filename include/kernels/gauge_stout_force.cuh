@@ -185,7 +185,7 @@ namespace quda
       USigma = Link();
       int mu = dir;
       byte_array<int8_t, 4> dx = {};
-  #pragma unroll
+#pragma unroll
       for (int nu = 0; nu < 4; nu++) {
         // Identify directions orthogonal to the link and
         // ignore the dir_ignore direction (usually the temporal dim
