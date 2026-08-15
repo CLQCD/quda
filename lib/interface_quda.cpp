@@ -41,7 +41,9 @@
 #include <ks_qsmear.h>
 
 #include <gauge_path_quda.h>
+#include <gauge_rotating.h>
 #include <gauge_update_quda.h>
+#include <hisq_force_rotating.h>
 
 #define MAX(a,b) ((a)>(b)? (a):(b))
 #define TDIFF(a,b) (b.tv_sec - a.tv_sec + 0.000001*(b.tv_usec - a.tv_usec))
@@ -1707,6 +1709,7 @@ namespace quda {
     diracParam.tm_rho = inv_param->tm_rho;
     diracParam.distance_pc_alpha0 = inv_param->distance_pc_alpha0;
     diracParam.distance_pc_t0 = inv_param->distance_pc_t0;
+    diracParam.angular_velocity = inv_param->angular_velocity;
 
     for (int i=0; i<4; i++) diracParam.commDim[i] = 1;   // comms are always on
 
@@ -4164,6 +4167,16 @@ int computeGaugeForceQuda(void* mom, void* siteLink,  int*** input_path_buf, int
   return 0;
 }
 
+// Keep only the file-private resident-momentum bridge here.  The rotating
+// implementation obtains the read-only resident thin gauge through QUDA's
+// existing accessor and owns all rotation-specific field preparation.
+int computeGaugeRotatingForceQuda(void *mom, void *context, double dt, QudaGaugeParam *param)
+{
+  auto profile = pushProfile(profileGaugeForce);
+  checkGaugeParam(param);
+  return quda::computeGaugeRotatingForce(momResident, mom, context, dt, param);
+}
+
 int computeGaugePathQuda(void *out, void *siteLink, int ***input_path_buf, int *path_length, double *loop_coeff,
                          int num_paths, int max_length, double eb3, QudaGaugeParam *qudaGaugeParam)
 {
@@ -4738,6 +4751,21 @@ void computeHISQForceQuda(void* const milc_momentum,
     std::exchange(momResident, mom);
   else if (!gParam->make_resident_mom)
     momResident = GaugeField();
+}
+
+// The ordinary HISQ entry point above remains unchanged.  This thin adapter
+// owns only the shared resident-momentum and parameter-checking contract; the
+// rotating force algorithm lives in hisq_force_rotating.cu.
+void computeHISQRotatingForceQuda(void *const milc_momentum, double dt, const double level2_coeff[6],
+                                  const double fat7_coeff[6], const void *const level2_fat,
+                                  const void *const w_link, const void *const v_link, const void *const u_link,
+                                  void **fermion, int num_terms, int num_naik_terms, double **coeff,
+                                  double angular_velocity, QudaGaugeParam *gParam)
+{
+  auto profile = pushProfile(profileHISQForce);
+  checkGaugeParam(gParam);
+  quda::computeHISQRotatingForce(momResident, milc_momentum, dt, level2_coeff, fat7_coeff, level2_fat, w_link,
+                                 v_link, u_link, fermion, num_terms, num_naik_terms, coeff, angular_velocity, gParam);
 }
 
 void computeCloverForceQuda(void *h_mom, double dt, void **h_x, void **, double *coeff, double kappa2, double ck,

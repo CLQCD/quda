@@ -44,9 +44,12 @@ set (QUDA_OBJS
   gauge_norm.cu gauge_update_quda.cu
   max_clover.cu dirac_clover.cpp dirac_wilson.cpp dirac_staggered.cpp
   dirac_staggered_kd.cpp dirac_clover_hasenbusch_twist.cpp
-  dirac_improved_staggered.cpp dirac_improved_staggered_kd.cpp dirac_domain_wall.cpp
+  dirac_improved_staggered.cpp dirac_improved_staggered_kd.cpp dirac_staggered_rotating.cpp
+  dslash_staggered_rotating.cu staggered_rotating_halo.cu dirac_domain_wall.cpp
   dirac_domain_wall_4d.cpp dirac_mobius.cpp dirac_twisted_clover.cpp
   dirac_twisted_mass.cpp 
+  gauge_rotating.cu
+  staggered_rotating_links.cpp
   llfat_quda.cu staggered_two_link_quda.cu gauge_force.cu gauge_loop_trace.cu gauge_polyakov_loop.cu
   gauge_random.cu gauge_noise.cu
   gauge_field_strength_tensor.cu clover_quda.cu 
@@ -101,7 +104,7 @@ set (QUDA_OBJS
   copy_gauge.cpp copy_clover.cu
   copy_gauge_offset.cu copy_color_spinor_offset.cu copy_clover_offset.cu
   staggered_oprod.cu clover_trace_quda.cu
-  hisq_paths_force_quda.cu
+  hisq_force_rotating.cu hisq_paths_force_quda.cu
   unitarize_force_quda.cu unitarize_links_quda.cu milc_interface.cpp milc_interface_internal.cpp
   tune.cpp
   device_vector.cu

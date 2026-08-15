@@ -47,6 +47,11 @@ namespace quda {
     CloverField *clover;
     GaugeField *xInvKD; // used for the Kahler-Dirac operator only
 
+    // The rotation coefficient is carried through the central QUDA Dirac
+    // factory. Rotation-owned links and caches stay in the rotation-specific
+    // interface; no rotation pointer is added here.
+    double angular_velocity; /**< Angular velocity of the rotating frame */
+
     double mu; // used by twisted mass only
     double mu_factor; // used by multigrid only
     double epsilon; //2nd tm parameter (used by twisted mass only)
@@ -79,6 +84,7 @@ namespace quda {
       dagger(QUDA_DAG_INVALID),
       gauge(0),
       clover(0),
+      angular_velocity(0.0),
       mu(0.0),
       mu_factor(0.0),
       epsilon(0.0),
@@ -111,6 +117,7 @@ namespace quda {
       printfQuda("mass = %g\n", mass);
       printfQuda("laplace3D = %d\n", laplace3D);
       printfQuda("covdev_mu = %d\n", covdev_mu);
+      printfQuda("angular_velocity = %g\n", angular_velocity);
       printfQuda("m5 = %g\n", m5);
       printfQuda("Ls = %d\n", Ls);
       printfQuda("matpcType = %d\n", matpcType);
