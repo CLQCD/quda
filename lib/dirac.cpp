@@ -1,6 +1,10 @@
 #include <dirac_quda.h>
 #include <dslash_quda.h>
+#include <dirac_staggered_rotating.h>
 #include <blas_quda.h>
+
+#include <cmath>
+#include <limits>
 
 namespace quda {
 
@@ -144,6 +148,19 @@ namespace quda {
   // Dirac operator factory
   Dirac* Dirac::create(const DiracParam &param)
   {
+    if (std::abs(param.angular_velocity) > std::numeric_limits<double>::epsilon()) {
+      if (param.type == QUDA_ASQTAD_DIRAC) {
+        if (getVerbosity() >= QUDA_DEBUG_VERBOSE)
+          printfQuda("Creating a DiracImprovedStaggeredRotating operator\n");
+        return new DiracImprovedStaggeredRotating(param);
+      } else if (param.type == QUDA_ASQTADPC_DIRAC) {
+        if (getVerbosity() >= QUDA_DEBUG_VERBOSE)
+          printfQuda("Creating a DiracImprovedStaggeredRotatingPC operator\n");
+        return new DiracImprovedStaggeredRotatingPC(param);
+      }
+      errorQuda("Rotating factory received unsupported Dirac type %d", param.type);
+    }
+
     if (param.type == QUDA_WILSON_DIRAC) {
       if (getVerbosity() >= QUDA_DEBUG_VERBOSE) printfQuda("Creating a DiracWilson operator\n");
       return new DiracWilson(param);

@@ -142,6 +142,8 @@ extern "C" {
     int laplace3D; /**< omit this direction from laplace operator: x,y,z,t -> 0,1,2,3 (-1 is full 4D) */
     int covdev_mu; /**< Apply forward/backward covariant derivative in direction mu(mu<=3)/mu-4(mu>3) */
 
+    double angular_velocity; /**< Angular velocity of the rotating frame */
+
     double tol;    /**< Solver tolerance in the L2 residual norm */
     double tol_restart;   /**< Solver tolerance in the L2 residual norm (used to restart InitCG) */
     double tol_hq; /**< Solver tolerance in the heavy quark residual norm */

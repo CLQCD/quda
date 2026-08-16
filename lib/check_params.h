@@ -11,6 +11,8 @@
 // loadGaugeQuda() or invertQuda().
 
 #include <float.h>
+#include <cmath>
+#include <limits>
 #define INVALID_INT QUDA_INVALID_ENUM
 #define INVALID_DOUBLE DBL_MIN
 
@@ -388,6 +390,7 @@ void printQudaInvertParam(QudaInvertParam *param) {
   P(twist_flavor, QUDA_TWIST_INVALID);
   P(laplace3D, INVALID_INT);
   P(covdev_mu, INVALID_INT);
+  P(angular_velocity, 0.0);
 #else
   // asqtad and domain wall use mass parameterization
   if (param->dslash_type == QUDA_STAGGERED_DSLASH || param->dslash_type == QUDA_ASQTAD_DSLASH
@@ -423,6 +426,16 @@ void printQudaInvertParam(QudaInvertParam *param) {
   if (param->dslash_type == QUDA_TWISTED_CLOVER_DSLASH) { P(tm_rho, INVALID_DOUBLE); }
   if (param->twist_flavor == QUDA_TWIST_NONDEG_DOUBLET) { P(epsilon, INVALID_DOUBLE); }
   if (param->dslash_type == QUDA_COVDEV_DSLASH) { P(covdev_mu, INVALID_INT); }
+#ifdef PRINT_PARAM
+  // INIT_PARAM initialized these fields above.  In this non-init block P()
+  // is used only for print mode; CHECK_PARAM validates them explicitly below.
+  P(angular_velocity, 0.0);
+#endif
+#ifdef CHECK_PARAM
+  if (std::abs(param->angular_velocity) > std::numeric_limits<double>::epsilon()
+      && param->dslash_type != QUDA_ASQTAD_DSLASH)
+    errorQuda("A non-zero angular_velocity requires QUDA_ASQTAD_DSLASH");
+#endif
 #endif
 
   P(tol, INVALID_DOUBLE);
