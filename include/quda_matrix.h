@@ -1154,9 +1154,9 @@ namespace quda {
         b10.imag(-b10.imag());
         b11.real(-b11.real());
         b12.imag(-b12.imag());
-        b20.real(-b10.real());
-        b21.imag(-b11.imag());
-        b22.real(-b12.real());
+        b20.real(-b20.real());
+        b21.imag(-b21.imag());
+        b22.real(-b22.real());
       }
 
       Matrix<T, 3> B1, B2;
