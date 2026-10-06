@@ -1078,7 +1078,7 @@ namespace quda {
       real dsinc_w_over_w;
 
       if (w < 0.05 && w > -0.05) {
-        dsinc_w_over_w = -1 / 3 + w_sq / 30 * (1 - w_sq / 260 * (1 - w_sq / 54 * (1 - w_sq / 88)));
+        dsinc_w_over_w = -1.0 / 3.0 + w_sq / 30 * (1 - w_sq / 28 * (1 - w_sq / 54 * (1 - w_sq / 88)));
       } else {
         dsinc_w_over_w = cos_w / w_sq - sinc_w / w_sq;
       }
