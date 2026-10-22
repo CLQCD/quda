@@ -1534,6 +1534,29 @@ extern "C" {
                                 int nvector, double multiplicity, void *, QudaGaugeParam *gauge_param,
                                 QudaInvertParam *inv_param);
   /**
+   * Compute a clover bilinear force from explicit spinor pairs and return it
+   * as a general-link force.
+   *
+   * This low-level interface is used by PyQUDA Hasenbusch ratio monomials to
+   * assemble Chroma-style derivative terms where the left and right spinors are
+   * not constrained to the tmLQCD determinant-ratio form.
+   *
+   * @param h_force Host force matrix in general-link layout
+   * @param h_x_even Even-parity part of the first spinor list
+   * @param h_x_odd Odd-parity part of the first spinor list
+   * @param h_p_even Even-parity part of the second spinor list
+   * @param h_p_odd Odd-parity part of the second spinor list
+   * @param coeff Multiplicative coefficient for Wilson outer products
+   * @param epsilon_even Multiplicative coefficient for even-parity clover sigma outer products
+   * @param epsilon_odd Multiplicative coefficient for odd-parity clover sigma outer products
+   * @param nvector Number of spinor pairs and coefficients
+   * @param gauge_param Gauge field meta data
+   * @param inv_param Dirac and solver meta data
+   */
+  void computeCloverPairForceV2Quda(void *h_force, void **h_x_even, void **h_x_odd, void **h_p_even, void **h_p_odd,
+                                    double *coeff, double *epsilon_even, double *epsilon_odd, int nvector,
+                                    QudaGaugeParam *gauge_param, QudaInvertParam *inv_param);
+  /**
    * Compute the clover force contributions from a set of partial
    * fractions stemming from a rational approximation suitable for use
    * within MILC.

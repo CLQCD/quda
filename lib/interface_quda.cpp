@@ -4901,6 +4901,85 @@ void computeCloverForceV2Quda(void *h_force, double dt, void **h_x, void **, dou
     forceResident = GaugeField();
 }
 
+void computeCloverPairForceV2Quda(void *h_force, void **h_x_even, void **h_x_odd, void **h_p_even, void **h_p_odd,
+                                  double *coeff, double *epsilon_even, double *epsilon_odd, int nvector,
+                                  QudaGaugeParam *gauge_param, QudaInvertParam *inv_param)
+{
+  using namespace quda;
+  auto profile = pushProfile(profileCloverForce, inv_param);
+
+  checkGaugeParam(gauge_param);
+  if (!gaugePrecise) errorQuda("No resident gauge field");
+  if (!cloverPrecise) errorQuda("No resident clover field");
+
+  GaugeFieldParam fParam(*gauge_param, h_force, QUDA_ASQTAD_GENERAL_LINKS);
+  bool use_resident_force = false;
+  GaugeField cpuForce = !use_resident_force ? GaugeField(fParam) : GaugeField();
+
+  fParam.location = QUDA_CUDA_FIELD_LOCATION;
+  fParam.create = gauge_param->overwrite_force ? QUDA_ZERO_FIELD_CREATE : QUDA_COPY_FIELD_CREATE;
+  fParam.field = &cpuForce;
+  fParam.reconstruct = QUDA_RECONSTRUCT_NO;
+  fParam.setPrecision(gauge_param->cuda_prec, true);
+
+  if (use_resident_force && !forceResident.Length()) errorQuda("No resident force field to use");
+  GaugeField cudaForce = use_resident_force ? forceResident.create_alias() : GaugeField(fParam);
+  if (use_resident_force && gauge_param->overwrite_force) cudaForce.zero();
+
+  ColorSpinorParam qParam(nullptr, *inv_param, fParam.x, false, QUDA_CUDA_FIELD_LOCATION);
+  qParam.setPrecision(gauge_param->cuda_prec, gauge_param->cuda_prec, true);
+  qParam.create = QUDA_NULL_FIELD_CREATE;
+  qParam.gammaBasis = QUDA_UKQCD_GAMMA_BASIS;
+
+  std::vector<ColorSpinorField> x(nvector), p(nvector);
+  std::vector<double> force_coeff(nvector);
+  std::vector<array<double, 2>> ferm_epsilon(nvector);
+
+  for (int i = 0; i < nvector; i++) {
+    x[i] = ColorSpinorField(qParam);
+    p[i] = ColorSpinorField(qParam);
+
+    // PyQUDA 侧显式传入 even/odd 半格指针，避免依赖 solution_type 猜测全格布局。
+    ColorSpinorParam cpuXEvenParam(h_x_even[i], *inv_param, fParam.x, true, inv_param->input_location);
+    ColorSpinorParam cpuXOddParam(h_x_odd[i], *inv_param, fParam.x, true, inv_param->input_location);
+    ColorSpinorParam cpuPEvenParam(h_p_even[i], *inv_param, fParam.x, true, inv_param->input_location);
+    ColorSpinorParam cpuPOddParam(h_p_odd[i], *inv_param, fParam.x, true, inv_param->input_location);
+    ColorSpinorField cpuXEven(cpuXEvenParam);
+    ColorSpinorField cpuXOdd(cpuXOddParam);
+    ColorSpinorField cpuPEven(cpuPEvenParam);
+    ColorSpinorField cpuPOdd(cpuPOddParam);
+    x[i][QUDA_EVEN_PARITY] = cpuXEven;
+    x[i][QUDA_ODD_PARITY] = cpuXOdd;
+    p[i][QUDA_EVEN_PARITY] = cpuPEven;
+    p[i][QUDA_ODD_PARITY] = cpuPOdd;
+
+    force_coeff[i] = coeff[i];
+    ferm_epsilon[i] = {epsilon_even[i], epsilon_odd[i]};
+  }
+
+  lat_dim_t R;
+  for (int d = 0; d < 4; d++) R[d] = (d == 0 ? 2 : 1) * (redundant_comms || commDimPartitioned(d));
+  updateExtendedGaugeResident(false, R, profileCloverForce);
+  GaugeField &gaugeEx = *extendedGaugeResident;
+
+  GaugeFieldParam oprodParam(cudaForce);
+  oprodParam.create = QUDA_ZERO_FIELD_CREATE;
+  oprodParam.geometry = QUDA_TENSOR_GEOMETRY;
+  GaugeField oprod(oprodParam);
+
+  auto x_ref = cvector_ref<const ColorSpinorField>(x);
+  auto p_ref = cvector_ref<const ColorSpinorField>(p);
+  computeCloverOprod(cudaForce, *gaugePrecise, x_ref, p_ref, force_coeff);
+  computeCloverSigmaOprod(oprod, x_ref, p_ref, ferm_epsilon);
+  cloverDerivative(cudaForce, gaugeEx, oprod, 1.0);
+
+  if (gauge_param->return_result_force) cpuForce.copy(cudaForce);
+  if (gauge_param->make_resident_force && use_resident_force)
+    std::exchange(forceResident, cudaForce);
+  else if (!gauge_param->make_resident_force)
+    forceResident = GaugeField();
+}
+
 void computeCloverForceQuda(void *h_mom, double dt, void **h_x, void **, double *coeff, double kappa2, double ck,
                             int nvector, double multiplicity, void *, QudaGaugeParam *gauge_param,
                             QudaInvertParam *inv_param)

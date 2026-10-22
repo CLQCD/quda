@@ -22,14 +22,17 @@ namespace quda {
     {
       setRHSstring(aux, in.size());
       if (in.Nspin() != 4 || out.Nspin() != 4) errorQuda("Unsupported nSpin=%d %d", out.Nspin(), in.Nspin());
-      if (!inverse) errorQuda("Unsupported direct application");
       apply(device::get_default_stream());
     }
 
     void apply(const qudaStream_t &stream)
     {
       TuneParam tp = tuneLaunch(*this, getTuning(), getVerbosity());
-      launch<CloverApply>(tp, stream, CloverArg<Float, nColor>(out, in, clover, parity));
+      if (inverse) {
+        launch<CloverApply>(tp, stream, CloverArg<Float, nColor, true>(out, in, clover, parity));
+      } else {
+        launch<CloverApply>(tp, stream, CloverArg<Float, nColor, false>(out, in, clover, parity));
+      }
     }
 
     // Backup if in and out fields alias
