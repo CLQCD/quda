@@ -4793,6 +4793,10 @@ void computeStoutForceQuda(void *h_force, QudaGaugeParam *gauge_param, QudaGauge
 
   if (smear_param->smear_type != QUDA_GAUGE_SMEAR_STOUT)
     errorQuda("Unsupported smear type %d", smear_param->smear_type);
+  if (smear_param->n_steps != 1)
+    errorQuda("computeStoutForceQuda supports exactly one stout step, received %d", smear_param->n_steps);
+  if (smear_param->smear_anisotropy != 1.0)
+    errorQuda("computeStoutForceQuda does not yet support smear_anisotropy=%g", smear_param->smear_anisotropy);
 
   GaugeFieldParam fParam(*gauge_param, h_force, QUDA_ASQTAD_GENERAL_LINKS);
   GaugeField cpuForce = !gauge_param->use_resident_force ? GaugeField(fParam) : GaugeField();
